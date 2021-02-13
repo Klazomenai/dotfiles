@@ -9,6 +9,6 @@ if has("autocmd")
   au BufReadPost * if line("'\"") > 1 && line("'\"") <= line("$") | exe "normal! g'\"" | endif
 endif
 
-" :set spell spelllang=en_gb
+:set spell spelllang=en_gb
 
 :hi Comment ctermfg=green

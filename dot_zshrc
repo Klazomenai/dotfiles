@@ -1,0 +1,89 @@
+# Add user bin directories to PATH (priority)
+export PATH="$HOME/bin:$HOME/.local/bin:$PATH"
+
+# Google Cloud SDK
+if [ -f "$HOME/bin/google-cloud-sdk/path.zsh.inc" ]; then
+  source "$HOME/bin/google-cloud-sdk/path.zsh.inc"
+fi
+
+# Add custom completions to fpath
+fpath=(~/.config/zsh/completions $fpath)
+
+# Path to oh-my-zsh installation
+export ZSH="$HOME/.oh-my-zsh"
+
+# Theme configuration
+# Options: robbyrussell (default), agnoster, powerlevel10k, etc.
+ZSH_THEME="robbyrussell"
+
+# kube-ps1 configuration (must be set before plugins load)
+KUBE_PS1_SYMBOL_ENABLE=true
+KUBE_PS1_SYMBOL_DEFAULT="⎈ "
+KUBE_PS1_SEPARATOR=" | "
+KUBE_PS1_PREFIX="("
+KUBE_PS1_SUFFIX=")"
+
+# Plugin configuration
+# Built-in: git, kubectl, gitfast, kube-ps1
+# Custom: zsh-autosuggestions, zsh-syntax-highlighting
+plugins=(
+  git
+  gitfast
+  kubectl
+  kube-ps1
+  zsh-autosuggestions
+  zsh-syntax-highlighting
+)
+
+# Load oh-my-zsh
+source $ZSH/oh-my-zsh.sh
+
+# Customize prompt to include kube-ps1
+# Prepend kubernetes context/namespace to prompt
+PROMPT='$(kube_ps1)'$PROMPT
+
+# User configuration
+
+# Set default editor
+export EDITOR='vim'
+export VISUAL='vim'
+
+# History configuration
+HISTSIZE=10000
+SAVEHIST=10000
+setopt HIST_IGNORE_ALL_DUPS
+setopt HIST_FIND_NO_DUPS
+setopt SHARE_HISTORY
+
+# Load modular configurations
+if [ -f "$HOME/.config/zsh/aliases.zsh" ]; then
+  source "$HOME/.config/zsh/aliases.zsh"
+fi
+
+if [ -f "$HOME/.config/zsh/git.zsh" ]; then
+  source "$HOME/.config/zsh/git.zsh"
+fi
+
+if [ -f "$HOME/.config/zsh/kubectl.zsh" ]; then
+  source "$HOME/.config/zsh/kubectl.zsh"
+fi
+
+# kube-ps1: Start with kubernetes prompt enabled
+# Toggle: kubeon / kubeoff
+kubeon
+
+# Google Cloud SDK completion
+if [ -f "$HOME/bin/google-cloud-sdk/completion.zsh.inc" ]; then
+  source "$HOME/bin/google-cloud-sdk/completion.zsh.inc"
+fi
+
+# Auto-start tmux
+# Only start if:
+# - tmux is installed
+# - we're not already in a tmux session
+# - we're not in an embedded terminal (like Emacs)
+if command -v tmux &> /dev/null && [ -z "$TMUX" ] && [ -z "$INSIDE_EMACS" ]; then
+  # Attach to existing 'default' session or create new one
+  # Suppress error message if session doesn't exist
+  tmux attach-session -t default 2>/dev/null || tmux new-session -s default
+fi

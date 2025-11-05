@@ -6,6 +6,9 @@ if [ -f "$HOME/bin/google-cloud-sdk/path.zsh.inc" ]; then
   source "$HOME/bin/google-cloud-sdk/path.zsh.inc"
 fi
 
+# Istio CLI
+export PATH="$HOME/.istioctl/bin:$PATH"
+
 # Add custom completions to fpath
 fpath=(~/.config/zsh/completions $fpath)
 

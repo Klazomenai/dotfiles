@@ -9,6 +9,7 @@ EXPECTED_KUBENS_VERSION=0.9.5
 EXPECTED_STERN_VERSION=1.33.0
 EXPECTED_K9S_VERSION=0.50.16
 EXPECTED_HELM_VERSION=3.11.1
+EXPECTED_ISTIOCTL_VERSION=1.27.3
 
 # Color codes for output
 COLOR_RESET=\033[0m
@@ -101,6 +102,20 @@ bin-version-check: ## Verify installed binary versions match VERSIONS.md
 		failed=$$((failed + 1)); \
 	fi; \
 	\
+	echo "Checking istioctl..."; \
+	if command -v istioctl >/dev/null 2>&1; then \
+		actual=$$(istioctl version --remote=false 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1); \
+		if [ "$$actual" = "$(EXPECTED_ISTIOCTL_VERSION)" ]; then \
+			printf "  $(COLOR_GREEN)✓$(COLOR_RESET) istioctl v$$actual (expected: v$(EXPECTED_ISTIOCTL_VERSION))\n"; \
+		else \
+			printf "  $(COLOR_RED)✗$(COLOR_RESET) istioctl v$$actual (expected: v$(EXPECTED_ISTIOCTL_VERSION))\n"; \
+			failed=$$((failed + 1)); \
+		fi \
+	else \
+		printf "  $(COLOR_RED)✗$(COLOR_RESET) istioctl not found in PATH\n"; \
+		failed=$$((failed + 1)); \
+	fi; \
+	\
 	echo ""; \
 	if [ $$failed -eq 0 ]; then \
 		printf "$(COLOR_GREEN)✅ All binary versions match VERSIONS.md$(COLOR_RESET)\n"; \
@@ -115,7 +130,7 @@ bin-paths-check: ## Verify all required binaries are in PATH
 	@echo "🔍 Checking binary availability in PATH..."
 	@echo ""
 	@failed=0; \
-	for bin in kubectx kubens stern k9s helm; do \
+	for bin in kubectx kubens stern k9s helm istioctl; do \
 		if command -v $$bin >/dev/null 2>&1; then \
 			path=$$(command -v $$bin); \
 			printf "  $(COLOR_GREEN)✓$(COLOR_RESET) $$bin found at $$path\n"; \

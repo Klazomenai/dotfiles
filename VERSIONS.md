@@ -9,13 +9,17 @@ Version-pinned external tools installed in `~/bin/` with symlink pattern.
 | stern | v1.33.0 | 2025-10-29 | Multi-pod log tailing with regex patterns |
 | k9s | v0.50.16 | 2025-10-29 | Terminal UI for kubernetes cluster management |
 | helm | v3.11.1 | 2025-10-29 | Kubernetes package manager, compatible with Autonity helm charts |
+| istioctl | v1.27.3 | 2025-11-05 | Istio service mesh CLI for debugging and configuration |
 
 ## Installation Pattern
 
-All tools follow the same pattern:
+Most tools follow this pattern:
 - Binary installed as `~/bin/{tool}-v{version}`
 - Symlink created as `~/bin/{tool} -> {tool}-v{version}`
 - Completions generated in `completions/_{tool}`
+
+Exceptions:
+- istioctl: Installed in `~/.istioctl/bin/` (official istioctl installation path)
 
 ## Version Compatibility
 
@@ -32,4 +36,5 @@ kubens --version
 stern --version
 k9s version
 helm version --short
+istioctl version --remote=false
 ```

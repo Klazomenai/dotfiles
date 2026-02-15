@@ -1,0 +1,61 @@
+{
+  "alwaysThinkingEnabled": true,
+  "permissions": {
+    "deny": [
+      "Bash(gh pr merge *)",
+      "Bash(gh pr ready *)",
+      "Bash(git push origin main)",
+      "Bash(git push origin main *)",
+      "Bash(git push --force *)",
+      "Bash(git push * --force)",
+      "Bash(git reset --hard *)",
+      "Bash(git checkout -- .)",
+      "Bash(git clean -f *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/no-closes-in-commits.sh",
+            "statusMessage": "Checking commit message conventions"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/no-push-to-main.sh",
+            "statusMessage": "Checking push target"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/no-closes-in-pr-body.sh",
+            "statusMessage": "Checking PR body conventions"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/require-signed-commits.sh",
+            "statusMessage": "Checking commit signing"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/no-coauthor-private.sh",
+            "statusMessage": "Checking co-author policy"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check if the assistant just created or modified a pull request. If so, verify: (1) It was created as a DRAFT PR (--draft flag), (2) The assistant did NOT suggest merging or mark it ready, (3) The assistant's final message tells the user the PR URL and stops — it does NOT suggest next steps about merging. If any of these are violated, return {\"ok\": false, \"reason\": \"PR must be draft. Never suggest merging. Stop after providing PR URL.\"}. $ARGUMENTS",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

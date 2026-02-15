@@ -1,4 +1,4 @@
-.PHONY: help bin-version-check bin-paths-check all-checks
+.PHONY: help install-claude bin-version-check bin-paths-check all-checks
 
 # Default target
 .DEFAULT_GOAL := help
@@ -20,6 +20,9 @@ COLOR_BLUE=\033[36m
 
 help: ## Display this help message
 	@echo "🔧 AVAILABLE TARGETS:"
+	@echo ""
+	@echo "📦 INSTALL:"
+	@grep -E '^install-.*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(COLOR_BLUE)%-25s$(COLOR_RESET) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "✅ VALIDATION:"
 	@grep -E '^(bin-version-check|bin-paths-check|all-checks):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(COLOR_BLUE)%-25s$(COLOR_RESET) %s\n", $$1, $$2}'
@@ -148,6 +151,14 @@ bin-paths-check: ## Verify all required binaries are in PATH
 		printf "$(COLOR_YELLOW)💡 Ensure ~/bin is in your PATH and binaries are installed$(COLOR_RESET)\n"; \
 		exit 1; \
 	fi
+
+install-claude: ## Symlink Claude Code configuration to ~/.claude
+	@echo "🔧 Installing Claude Code configuration..."
+	@mkdir -p ~/.claude
+	@ln -sf $(CURDIR)/claude/CLAUDE.md ~/.claude/CLAUDE.md
+	@ln -sf $(CURDIR)/claude/settings.json ~/.claude/settings.json
+	@ln -sfn $(CURDIR)/claude/hooks ~/.claude/hooks
+	@printf "$(COLOR_GREEN)✅ Claude Code configuration linked to ~/.claude$(COLOR_RESET)\n"
 
 all-checks: bin-paths-check bin-version-check ## Run all validation checks
 	@echo ""

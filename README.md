@@ -11,6 +11,7 @@ Personal configuration files for shell and tools.
 - `zsh/git.zsh`, git shortcuts and functions
 - `zsh/kubectl.zsh`, kubernetes kubectl shortcuts
 - `completions/`, zsh completion scripts
+- `claude/`, Claude Code configuration (CLAUDE.md, settings.json, hooks)
 
 # ZSH Plugins
 
@@ -27,6 +28,8 @@ Personal configuration files for shell and tools.
 - `oh-my-zsh`, framework
 - `tmux`, terminal multiplexer (auto-starts with zsh)
 - `kubectl`, for kubernetes features
+- `jq`, required by Claude Code hook scripts
+- `gh`, GitHub CLI, required by Claude Code co-author policy hook
 
 # External Tools
 
@@ -62,6 +65,12 @@ ln -sf ~/path/to/dotfiles/zsh/aliases.zsh ~/.config/zsh/aliases.zsh
 ln -sf ~/path/to/dotfiles/zsh/git.zsh ~/.config/zsh/git.zsh
 ln -sf ~/path/to/dotfiles/zsh/kubectl.zsh ~/.config/zsh/kubectl.zsh
 ln -sf ~/path/to/dotfiles/completions ~/.config/zsh/completions
+```
+
+- Claude Code configuration:
+
+```
+make install-claude
 ```
 
 - Reload shell:

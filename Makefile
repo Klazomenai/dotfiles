@@ -154,11 +154,12 @@ bin-paths-check: ## Verify all required binaries are in PATH
 
 install-claude: ## Symlink Claude Code configuration to ~/.claude
 	@echo "🔧 Installing Claude Code configuration..."
-	@mkdir -p ~/.claude
-	@ln -sf $(CURDIR)/claude/CLAUDE.md ~/.claude/CLAUDE.md
-	@ln -sf $(CURDIR)/claude/settings.json ~/.claude/settings.json
-	@ln -sfn $(CURDIR)/claude/hooks ~/.claude/hooks
-	@printf "$(COLOR_GREEN)✅ Claude Code configuration linked to ~/.claude$(COLOR_RESET)\n"
+	@mkdir -p "$(HOME)/.claude"
+	@ln -sf "$(CURDIR)/claude/CLAUDE.md" "$(HOME)/.claude/CLAUDE.md"
+	@ln -sf "$(CURDIR)/claude/settings.json" "$(HOME)/.claude/settings.json"
+	@rm -rf -- "$(HOME)/.claude/hooks"
+	@ln -sfn "$(CURDIR)/claude/hooks" "$(HOME)/.claude/hooks"
+	@printf "$(COLOR_GREEN)✅ Claude Code configuration linked to $(HOME)/.claude$(COLOR_RESET)\n"
 
 all-checks: bin-paths-check bin-version-check ## Run all validation checks
 	@echo ""

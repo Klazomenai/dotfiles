@@ -27,7 +27,7 @@ Before any Terraform operation:
 
 - **Always run `terraform plan` before `terraform apply`** — no exceptions
 - Flag any resources marked for **destroy** or **replace** (force replacement)
-- Flag any changes to critical resource types (extend per provider): `google_container_cluster`, `google_container_node_pool`, `google_sql_database_instance`, `google_project_iam_*`, `kubernetes_namespace`
+- Flag any changes to critical resource types (extend per provider): `google_container_cluster`, `google_container_node_pool`, `google_sql_database_instance`, `google_project_iam_*`, `google_kms_key_ring`, `google_kms_crypto_key`, `kubernetes_namespace`
 - Verify resource counts: additions, changes, and destructions should match expectations
 - Look for unexpected changes caused by provider upgrades or state drift
 - If the plan shows `0 to add, 0 to change, 0 to destroy`, confirm this is expected before proceeding
@@ -117,6 +117,16 @@ Before ANY Terraform command that modifies state:
 - [ ] Destructive changes explicitly approved?
 - [ ] State backed up (for state operations)?
 - [ ] Changes committed to version control?
+
+## Multiple Root Modules
+
+When working with repositories that split Terraform into multiple root modules (separate working directories with independent backends, e.g. `terraform/bootstrap/`, `terraform/network/`, `terraform/cluster/`):
+
+- Run `terraform init` separately in each root module directory — root modules do NOT share state (child modules called within a root module share that root module's state)
+- Use `terraform output` or the `terraform_remote_state` data source to pass values between root modules — NEVER hardcode values from one into another
+- Verify the backend state key/prefix is unique per root module to prevent state collisions
+- Apply root modules in dependency order: bootstrap → kms → network → cluster → iam → dns
+- When reviewing plans across root modules, check that referenced outputs from upstream modules actually exist
 
 ## Anti-Patterns to Flag
 

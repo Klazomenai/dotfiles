@@ -159,6 +159,8 @@ install-claude: ## Symlink Claude Code configuration to ~/.claude
 	@ln -sf "$(CURDIR)/claude/settings.json" "$(HOME)/.claude/settings.json"
 	@rm -rf -- "$(HOME)/.claude/hooks"
 	@ln -sfn "$(CURDIR)/claude/hooks" "$(HOME)/.claude/hooks"
+	@rm -rf -- "$(HOME)/.claude/skills"
+	@ln -sfn "$(CURDIR)/claude/skills" "$(HOME)/.claude/skills"
 	@printf "$(COLOR_GREEN)✅ Claude Code configuration linked to $(HOME)/.claude$(COLOR_RESET)\n"
 
 all-checks: bin-paths-check bin-version-check ## Run all validation checks

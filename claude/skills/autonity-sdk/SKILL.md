@@ -3,7 +3,7 @@ name: autonity-sdk
 description: >-
   Multi-language SDK patterns for Autonity — TypeScript (ethers.js/viem),
   Go (ethclient), Python (web3.py). Higher-level API middleware wrapping
-  consensus, economic, and stabilization layers. Use when building SDKs,
+  consensus, economic, and stabilisation layers. Use when building SDKs,
   APIs, or developer tooling for Autonity.
 ---
 
@@ -133,7 +133,7 @@ autonity.oracle.getPrice("NTN-USD")
 autonity.oracle.getAllPrices()
 autonity.oracle.getRoundData(round, symbol)
 autonity.asm.openCDP(collateral, borrowAmount)
-autonity.asm.getHealth(account)           // collateralization ratio
+autonity.asm.getHealth(account)           // collateralisation ratio
 autonity.asm.listAuctions()
 autonity.consensus.getCommittee()
 autonity.consensus.getEpochInfo()

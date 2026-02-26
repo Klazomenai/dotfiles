@@ -96,12 +96,12 @@ Each validator has a **unique LNTN ERC-20 contract** representing delegated stak
 3. `repay(account, amount)` — Return Auton to reduce debt
 4. `withdraw(account, amount)` — Reclaim NTN collateral (must maintain ratio)
 
-### Collateralization
+### Collateralisation
 
 - Collateral: NTN tokens | Borrowed: Auton stablecoin
 - Peg target: ACU (basket of 7 fiat currencies: AUD, CAD, EUR, GBP, JPY, SEK, USD)
 - `collateralPrice()` — Current NTN/ACU ratio used for collateral valuation
-- Min collateralization ratio + liquidation ratio — **monitor both continuously**
+- Min collateralisation ratio + liquidation ratio — **monitor both continuously**
 - `cdps(owner)` — Query CDP state (principal, interest, collateral amounts)
 
 ### Interest
@@ -114,7 +114,7 @@ Each validator has a **unique LNTN ERC-20 contract** representing delegated stak
 
 ### Debt Liquidation
 
-- Undercollateralized CDPs become liquidatable when below liquidation ratio
+- Undercollateralised CDPs become liquidatable when below liquidation ratio
 - `bidDebt(debtor, round, ntnAmount)` — Bid to liquidate (send Auton, receive NTN collateral)
 - `maxLiquidationReturn(debtor, round)` — Max NTN receivable (**always check before bidding**)
 - `openAuctions()` — List all active liquidation auctions

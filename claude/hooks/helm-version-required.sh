@@ -4,8 +4,8 @@ INPUT=$(cat)
 TOOL=$(echo "$INPUT" | jq -r '.tool_name')
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 
-if [[ "$TOOL" == "Bash" ]] && echo "$COMMAND" | grep -qE '^\s*helm\s+(upgrade|install)\b'; then
-  if ! echo "$COMMAND" | grep -qE '--version[ =]'; then
+if [[ "$TOOL" == "Bash" ]] && echo "$COMMAND" | grep -qE '^[[:space:]]*helm[[:space:]]+(upgrade|install)($|[[:space:]])'; then
+  if ! echo "$COMMAND" | grep -qE -- '--version[ =]'; then
     jq -n '{
       hookSpecificOutput: {
         hookEventName: "PreToolUse",

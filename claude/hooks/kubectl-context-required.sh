@@ -4,8 +4,8 @@ INPUT=$(cat)
 TOOL=$(echo "$INPUT" | jq -r '.tool_name')
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 
-if [[ "$TOOL" == "Bash" ]] && echo "$COMMAND" | grep -qE '^\s*kubectl\s+(apply|delete|patch|edit|create|replace|scale|drain|cordon|uncordon|exec|rollout|label|annotate|taint)\b'; then
-  if ! echo "$COMMAND" | grep -qE '--context[ =]'; then
+if [[ "$TOOL" == "Bash" ]] && echo "$COMMAND" | grep -qE '^[[:space:]]*kubectl[[:space:]]+(apply|delete|patch|edit|create|replace|scale|drain|cordon|uncordon|exec|rollout|label|annotate|taint)($|[[:space:]])'; then
+  if ! echo "$COMMAND" | grep -qE -- '--context[ =]'; then
     jq -n '{
       hookSpecificOutput: {
         hookEventName: "PreToolUse",

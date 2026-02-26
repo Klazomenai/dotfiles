@@ -42,6 +42,11 @@
             "type": "command",
             "command": "~/.claude/hooks/no-coauthor-private.sh",
             "statusMessage": "Checking co-author policy"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/kubectl-context-required.sh",
+            "statusMessage": "Checking kubectl context"
           }
         ]
       }

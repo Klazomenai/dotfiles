@@ -47,11 +47,6 @@
             "type": "command",
             "command": "~/.claude/hooks/kubectl-context-required.sh",
             "statusMessage": "Checking kubectl context"
-          },
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/helm-version-required.sh",
-            "statusMessage": "Checking helm version pinning"
           }
         ]
       }

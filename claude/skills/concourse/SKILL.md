@@ -148,3 +148,35 @@ Before setting any pipeline:
 - Missing `passed:` constraints that allow jobs to run out of order
 - `fly` commands without `-t <target>` flag
 - Vault policy with write/delete capabilities for Concourse role
+
+## Local Reference Sources
+
+When writing or reviewing Concourse pipelines, tasks, or configuration, **read local upstream clones first** before web searching. These repositories are available locally and cover all Concourse topics relevant to K8s-based projects.
+
+### Lookup Protocol
+
+1. Identify the topic (pipeline syntax, task config, Helm values, auth, etc.)
+2. Find the matching repository from the table below
+3. Read the relevant files directly
+4. Only fall back to web search if local sources don't cover the topic
+
+### Topic-to-Repository Mapping
+
+| Topic | Repository | Key Paths Within Repo |
+|-------|-----------|----------------------|
+| Pipeline YAML syntax (steps, resources, jobs) | `docs` | `docs/docs/` (steps/, resources/, jobs.md, pipelines/) |
+| Task configuration | `docs` + `ci` | `docs/docs/tasks.md`, `ci/tasks/` |
+| Resource types (built-in + protocol) | `docs` + `semver-resource` | `docs/docs/resource-types/`, `semver-resource/check,in,out/` |
+| Pipeline examples and templates | `examples` | `pipelines/`, `pipelines/templates/`, `pipelines/multi-branch/` |
+| Helm chart values (K8s deployment) | `concourse-chart` | `values.yaml`, `templates/`, `Chart.yaml` |
+| Variables and credential managers | `docs` | `docs/docs/vars.md` |
+| Auth and identity (OIDC, LDAP) | `dex` + `docs` | `dex/docs/`, `docs/docs/auth-and-teams/` |
+| Core internals (API, engine, scheduler) | `concourse` | `atc/api/`, `atc/engine/`, `atc/scheduler/`, `atc/worker/` |
+| Design decisions and feature rationale | `rfcs` | Individual RFCs, `DESIGN_PRINCIPLES.md` |
+| CI self-hosting patterns | `ci` | `concourse.yml`, `pr.yml`, `reconfigure.yml`, `tasks/` |
+| Security hardening | `docs` | `docs/docs/operation/security-hardening.md` |
+| Web security (auth, RBAC) | `concourse` | `atc/api/auth/`, `atc/api/accessor/roles.go` |
+
+Two additional repos (`concourse-bosh-release`, `concourse-bosh-deployment`) are available locally but omitted — BOSH deployment model, not used in K8s-based projects.
+
+Repository absolute paths are resolved via the private memory file (not stored in this public skill file).

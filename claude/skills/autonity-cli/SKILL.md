@@ -11,7 +11,7 @@ description: >-
 
 ## Configuration & Environment
 
-`.autrc` is an INI-style config file. Search order: current directory → parent directories → `~/.config/aut/autrc`.
+`.autrc` is an INI-style config file. Search order: current directory → parent directories → `~/.config/aut/autrc`. Note: the global config filename is `autrc` (no leading dot) — this is intentional XDG convention; only the local/project file uses `.autrc`.
 
 Key config fields:
 

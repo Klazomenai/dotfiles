@@ -33,7 +33,8 @@ Priority: CLI flag > env var > config file > default. Default keystore: `~/.auto
 The canonical pipeline is `make → sign → send → wait`:
 
 ```sh
-aut tx make <subcommand> ... | aut tx sign - | aut tx send -
+HASH=$(aut tx make <subcommand> ... | aut tx sign - | aut tx send -)
+aut tx wait "$HASH"
 ```
 
 - `aut tx make` auto-fetches nonce, gas estimate, and chain ID — override only when you have a specific reason
@@ -46,8 +47,8 @@ Save to files for debugging or audit trails:
 ```sh
 aut tx make ... > tx.json
 aut tx sign tx.json > tx.signed.json
-aut tx send tx.signed.json
-aut tx wait "$(aut tx send tx.signed.json)"
+TX_HASH="$(aut tx send tx.signed.json)"
+aut tx wait "$TX_HASH"
 ```
 
 Set `KEYFILEPWD` for non-interactive signing in CI:
@@ -79,13 +80,13 @@ aut account import-private-key < keyfile.txt
 
 ## Validator & Staking Operations
 
-All staking commands produce unsigned transactions; pipe to `sign | send | wait`.
+All staking commands produce unsigned transactions; pipe to `sign | send`. For scripts, capture the hash and call `aut tx wait` — see Scripting section.
 
 ```sh
 # Bond NTN to a validator
 aut validator bond --validator ADDR AMOUNT | aut tx sign - | aut tx send -
 
-# Unbond — subject to unbonding period (~6 hours / 10800 blocks)
+# Unbond — subject to unbonding period (~6 hours / 21600 blocks)
 aut validator unbond --validator ADDR AMOUNT | aut tx sign - | aut tx send -
 
 # Set LNTN allowance before delegating on behalf of another account
@@ -112,7 +113,8 @@ Check `bondedStake`, `selfBondedStake`, and `state` fields in `aut validator inf
 aut contract call --abi ABI_FILE --address ADDR METHOD [PARAMS]
 
 # State-changing call — produces unsigned tx for signing
-aut contract tx --abi ABI_FILE --address ADDR METHOD [PARAMS] | aut tx sign - | aut tx send -
+TX_HASH=$(aut contract tx --abi ABI_FILE --address ADDR METHOD [PARAMS] | aut tx sign - | aut tx send -)
+aut tx wait "$TX_HASH"
 
 # Fetch protocol ABI dynamically (contracts are upgradeable)
 aut protocol contract-abi > autonity.abi
@@ -171,7 +173,7 @@ Source configuration from `.autrc` or environment — never hardcode RPC endpoin
 # .autrc
 [aut]
 rpc_endpoint = https://rpc.example.com
-keyfile = /path/to/keyfile.json
+keyfile = ~/.autonity/keys/validator.json
 ```
 
 Handle `aut tx wait` failure explicitly:
@@ -201,6 +203,6 @@ Prefer pipes for one-shot operations; save to files when you need to debug inter
 - **Complex contract params as plain strings** — arrays must be JSON: `'["a","b"]'`; plain comma-separated strings are parsed as a single argument
 - **Missing explicit `KEYFILE`/`-k` in scripts** — `aut tx sign` defaults to the configured keyfile, which may differ across environments; be explicit
 - **`aut account reveal-private-key` in automation** — the private key appears in stdout; never call this in scripts, CI, or sessions with terminal logging
-- **WebSocket RPC URL with `aut`** — `aut` uses web3.py which has known WebSocket issues in Python 3.10+; use HTTP (`https://`) or IPC (`/path/to/geth.ipc`)
+- **WebSocket RPC URL with `aut`** — `aut` uses web3.py which has known WebSocket issues in Python 3.10+; use HTTP (`https://`) or IPC (`$GETH_IPC`)
 - **Hardcoded ABI files** — protocol contracts are upgradeable via `UpgradeManager`; always fetch fresh with `aut protocol contract-abi`
 - **Ignoring `aut tx wait` exit code** — a non-zero exit means the transaction reverted or timed out; scripts that ignore it silently proceed on failure

@@ -55,7 +55,8 @@ Set `KEYFILEPWD` for non-interactive signing in CI:
 
 ```sh
 export KEYFILEPWD="$(secret-manager get autonity-key-password)"
-aut tx make ... | aut tx sign - | aut tx send -
+HASH=$(aut tx make ... | aut tx sign - | aut tx send -)
+aut tx wait "$HASH"
 ```
 
 ## Account & Key Management
@@ -80,7 +81,7 @@ aut account import-private-key < keyfile.txt
 
 ## Validator & Staking Operations
 
-All staking commands produce unsigned transactions; pipe to `sign | send`. For scripts, capture the hash and call `aut tx wait` — see Scripting section.
+State-changing staking commands produce unsigned transactions; pipe to `sign | send`. For scripts, capture the hash and call `aut tx wait` — see Scripting section.
 
 ```sh
 # Bond NTN to a validator
@@ -193,7 +194,7 @@ Prefer pipes for one-shot operations; save to files when you need to debug inter
 
 ## Anti-Patterns to Flag
 
-- **Private key or password as a CLI argument** — leaks to shell history and `/proc/<pid>/cmdline`; use `KEYFILEPWD` env var or file input
+- **Private key or password as a CLI argument** — leaks to shell history and process listings; use `KEYFILEPWD` env var or file input
 - **`--gas-price` with `--max-fee-per-gas`** — legacy and EIP-1559 fee flags are mutually exclusive; mixing them produces an error
 - **Hardcoding RPC endpoint in scripts** — use `.autrc` `rpc_endpoint` or `WEB3_ENDPOINT` env var for portability
 - **`aut contract call` for state-changing methods** — `call` is read-only; state changes require `aut contract tx` piped through sign/send

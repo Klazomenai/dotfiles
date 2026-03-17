@@ -14,10 +14,12 @@ fi
 # Case-sensitive, token-boundary anchored — 'git' must follow start-of-line or a real
 # shell delimiter (;|&(){), with optional whitespace between delimiter and 'git'.
 # Whitespace alone is NOT a valid boundary: prevents 'echo git push ...' from being
-# treated as a real push. Known command-runners (sudo, command, exec, env) are
-# recognised as wrappers so 'sudo git push ...' is still caught.
+# treated as a real push.
+# Recognised prefixes before 'git':
+#   sudo/command/exec        — command-runners
+#   (env)? (VAR=val )*       — inline env assignments, optionally preceded by 'env'
 # Note: 'bash -c "git push ..."' is not parsed — inner quoted content is out of scope.
-if ! echo "$COMMAND" | grep -qE '(^|[;|&({])[[:space:]]*((sudo|command|exec|env)[[:space:]]+)?git[[:space:]]+push($|[[:space:]])'; then
+if ! echo "$COMMAND" | grep -qE '(^|[;|&({])[[:space:]]*((sudo|command|exec)[[:space:]]+|(env[[:space:]]+)?([A-Z_][A-Z0-9_]*=[^[:space:]]*[[:space:]]+)*)?git[[:space:]]+push($|[[:space:]])'; then
   exit 0
 fi
 
@@ -109,6 +111,6 @@ while IFS= read -r push_segment; do
     fi
   done <<< "$refspecs"
 
-done < <(echo "$COMMAND" | grep -oE '(^|[;|&({])[[:space:]]*((sudo|command|exec|env)[[:space:]]+)?git[[:space:]]+push[^;&|><)]*')
+done < <(echo "$COMMAND" | grep -oE '(^|[;|&({])[[:space:]]*((sudo|command|exec)[[:space:]]+|(env[[:space:]]+)?([A-Z_][A-Z0-9_]*=[^[:space:]]*[[:space:]]+)*)?git[[:space:]]+push[^;&|><)]*')
 
 exit 0

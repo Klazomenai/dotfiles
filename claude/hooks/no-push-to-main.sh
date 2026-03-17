@@ -11,8 +11,10 @@ fi
 # Case-sensitive, token-boundary anchored — 'git' must follow start-of-line or a real
 # shell delimiter (;|&(){), with optional whitespace between delimiter and 'git'.
 # Whitespace alone is NOT a valid boundary: prevents 'echo git push ...' from being
-# treated as a real push. Includes ( and { for subshell/group constructs.
-if ! echo "$COMMAND" | grep -qE '(^|[;|&({])[[:space:]]*git[[:space:]]+push($|[[:space:]])'; then
+# treated as a real push. Known command-runners (sudo, command, exec, env) are
+# recognised as wrappers so 'sudo git push ...' is still caught.
+# Note: 'bash -c "git push ..."' is not parsed — inner quoted content is out of scope.
+if ! echo "$COMMAND" | grep -qE '(^|[;|&({])[[:space:]]*((sudo|command|exec|env)[[:space:]]+)?git[[:space:]]+push($|[[:space:]])'; then
   exit 0
 fi
 
@@ -50,9 +52,10 @@ while IFS= read -r push_segment; do
   # Strip leading whitespace/operators/grouping delimiters left by the anchor group.
   push_segment=$(echo "$push_segment" | sed 's/^[[:space:];|&({]*//')
 
-  # Strip the 'git push' prefix, tolerating any whitespace between 'git' and 'push'
-  # (tabs, multiple spaces) to stay consistent with the detector's [[:space:]]+ match.
-  after_push=$(echo "$push_segment" | sed 's/git[[:space:]][[:space:]]*push//')
+  # Strip everything up to and including 'git push', consuming any wrapper prefix
+  # (sudo, command, exec, env) that precedes 'git'. Greedy '.*' ensures the wrapper
+  # is removed even with arbitrary whitespace or env-var assignments before 'git'.
+  after_push=$(echo "$push_segment" | sed 's/.*git[[:space:]][[:space:]]*push//')
 
   # Extract positionals, splitting on any whitespace (tr -s handles tabs and
   # multi-space runs consistently with the [[:space:]]+ detector pattern).
@@ -92,6 +95,6 @@ while IFS= read -r push_segment; do
     fi
   done <<< "$refspecs"
 
-done < <(echo "$COMMAND" | grep -oE '(^|[;|&({])[[:space:]]*git[[:space:]]+push[^;&|><)]*')
+done < <(echo "$COMMAND" | grep -oE '(^|[;|&({])[[:space:]]*((sudo|command|exec|env)[[:space:]]+)?git[[:space:]]+push[^;&|><)]*')
 
 exit 0

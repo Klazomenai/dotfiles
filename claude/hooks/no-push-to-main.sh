@@ -8,10 +8,11 @@ if [[ "$TOOL" != "Bash" ]]; then
   exit 0
 fi
 
-# Case-sensitive, token-boundary anchored — 'git' must follow start-of-line or
-# a shell operator/space/grouping delimiter, preventing substring matches.
-# Includes ( and { to catch subshell/group constructs: (git push ...) { git push ...; }
-if ! echo "$COMMAND" | grep -qE '(^|[[:space:];|&({])git[[:space:]]+push($|[[:space:]])'; then
+# Case-sensitive, token-boundary anchored — 'git' must follow start-of-line or a real
+# shell delimiter (;|&(){), with optional whitespace between delimiter and 'git'.
+# Whitespace alone is NOT a valid boundary: prevents 'echo git push ...' from being
+# treated as a real push. Includes ( and { for subshell/group constructs.
+if ! echo "$COMMAND" | grep -qE '(^|[;|&({])[[:space:]]*git[[:space:]]+push($|[[:space:]])'; then
   exit 0
 fi
 
@@ -91,6 +92,6 @@ while IFS= read -r push_segment; do
     fi
   done <<< "$refspecs"
 
-done < <(echo "$COMMAND" | grep -oE '(^|[[:space:];|&({])git[[:space:]]+push[^;&|><)]*')
+done < <(echo "$COMMAND" | grep -oE '(^|[;|&({])[[:space:]]*git[[:space:]]+push[^;&|><)]*')
 
 exit 0

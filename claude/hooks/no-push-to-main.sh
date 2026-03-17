@@ -3,6 +3,9 @@ set -euo pipefail
 INPUT=$(cat)
 TOOL=$(echo "$INPUT" | jq -r '.tool_name')
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+# Normalize backslash-newline continuations so 'git push origin \<newline>main'
+# is treated as 'git push origin main' rather than two separate grep lines.
+COMMAND="${COMMAND//$'\\\n'/}"
 
 if [[ "$TOOL" != "Bash" ]]; then
   exit 0
@@ -60,15 +63,24 @@ while IFS= read -r push_segment; do
   # Extract positionals, splitting on any whitespace (tr -s handles tabs and
   # multi-space runs consistently with the [[:space:]]+ detector pattern).
   # Skip flags and values of known options-with-args.
-  # Known git push options that consume the next token: -o/--push-option, --repo, --receive-pack/--exec
+  # Tracks: end_of_opts (-- seen → subsequent -* tokens are refspecs, not flags)
+  #         has_explicit_repo (--repo/--repo=<url> seen → no remote positional expected)
   positionals=""
   skip_next=0
+  end_of_opts=0
+  has_explicit_repo=0
   while IFS= read -r token; do
     [[ -z "$token" ]] && continue
     if [[ "$skip_next" -eq 1 ]]; then skip_next=0; continue; fi
+    # Lone backslash: stray continuation fragment — skip it (fail-safe: count
+    # will drop below threshold and deny if no other refspec is present).
+    [[ "$token" == "\\" ]] && continue
     case "$token" in
-      -o|--push-option|--repo|--receive-pack|--exec) skip_next=1; continue ;;
-      -*) continue ;;
+      --repo=*) has_explicit_repo=1; continue ;;
+      --repo) has_explicit_repo=1; skip_next=1; continue ;;
+      -o|--push-option|--receive-pack|--exec) skip_next=1; continue ;;
+      --) end_of_opts=1; continue ;;
+      -*) [[ "$end_of_opts" -eq 0 ]] && continue ;;
     esac
     # Skip bare numeric tokens — these are file descriptor numbers from
     # fd-prefixed redirections (e.g. '2' from '2>&1', '1' from '1>/dev/null')
@@ -79,15 +91,17 @@ while IFS= read -r push_segment; do
 
   count=$(echo "$positionals" | grep -c '[^[:space:]]' || true)
 
-  # No branch/refspec specified (bare push or remote-only push) → deny
-  if [[ "$count" -lt 2 ]]; then
+  # When --repo specifies the remote, there is no remote positional — only
+  # refspec(s). Require at least 1 positional; otherwise require remote + refspec.
+  min_positionals=$(( has_explicit_repo ? 1 : 2 ))
+  if [[ "$count" -lt "$min_positionals" ]]; then
     deny
   fi
 
-  # Check ALL refspecs (every positional after the remote).
-  # Deny if any refspec target resolves to main/master — catches
-  # multi-refspec pushes like 'git push origin main feat/foo'.
-  refspecs=$(echo "$positionals" | grep '[^[:space:]]' | tail -n +2)
+  # Check ALL refspecs. When --repo specified the remote, all positionals are
+  # refspecs (tail -n +1). Otherwise the first positional is the remote (tail -n +2).
+  refspec_start=$(( has_explicit_repo ? 1 : 2 ))
+  refspecs=$(echo "$positionals" | grep '[^[:space:]]' | tail -n +"$refspec_start")
   while IFS= read -r refspec; do
     [[ -z "$refspec" ]] && continue
     if is_protected_target "$refspec"; then

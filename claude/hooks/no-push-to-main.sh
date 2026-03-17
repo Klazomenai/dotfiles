@@ -19,7 +19,7 @@ fi
 #   sudo/command/exec        — command-runners
 #   (env)? (VAR=val )*       — inline env assignments, optionally preceded by 'env'
 # Note: 'bash -c "git push ..."' is not parsed — inner quoted content is out of scope.
-if ! echo "$COMMAND" | grep -qE '(^|[;|&({])[[:space:]]*((sudo|command|exec)[[:space:]]+|(env[[:space:]]+)?([A-Z_][A-Z0-9_]*=[^[:space:]]*[[:space:]]+)*)?git[[:space:]]+push($|[[:space:]])'; then
+if ! echo "$COMMAND" | grep -qE '(^|[;|&({])[[:space:]]*((sudo|command|exec)[[:space:]]+|(env[[:space:]]+)?([A-Z_][A-Z0-9_]*=[^[:space:]]*[[:space:]]+)*)?git([[:space:]]+[^[:space:]]+)*[[:space:]]+push($|[^a-zA-Z0-9_-])'; then
   exit 0
 fi
 
@@ -58,9 +58,9 @@ while IFS= read -r push_segment; do
   push_segment=$(echo "$push_segment" | sed 's/^[[:space:];|&({]*//')
 
   # Strip everything up to and including 'git push', consuming any wrapper prefix
-  # (sudo, command, exec, env) that precedes 'git'. Greedy '.*' ensures the wrapper
-  # is removed even with arbitrary whitespace or env-var assignments before 'git'.
-  after_push=$(echo "$push_segment" | sed 's/.*git[[:space:]][[:space:]]*push//')
+  # (sudo, command, exec, env, VAR=val) and any git global options (-C, -c, etc.)
+  # that precede 'push'. The ([^[:space:]]+[[:space:]]+)* group skips option tokens.
+  after_push=$(echo "$push_segment" | sed -E 's/.*git[[:space:]]+([^[:space:]]+[[:space:]]+)*push//')
 
   # Extract positionals, splitting on any whitespace (tr -s handles tabs and
   # multi-space runs consistently with the [[:space:]]+ detector pattern).
@@ -111,6 +111,6 @@ while IFS= read -r push_segment; do
     fi
   done <<< "$refspecs"
 
-done < <(echo "$COMMAND" | grep -oE '(^|[;|&({])[[:space:]]*((sudo|command|exec)[[:space:]]+|(env[[:space:]]+)?([A-Z_][A-Z0-9_]*=[^[:space:]]*[[:space:]]+)*)?git[[:space:]]+push[^;&|><)]*')
+done < <(echo "$COMMAND" | grep -oE '(^|[;|&({])[[:space:]]*((sudo|command|exec)[[:space:]]+|(env[[:space:]]+)?([A-Z_][A-Z0-9_]*=[^[:space:]]*[[:space:]]+)*)?git([[:space:]]+[^[:space:]]+)*[[:space:]]+push[^;&|><)]*')
 
 exit 0

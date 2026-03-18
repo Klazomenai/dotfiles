@@ -224,6 +224,10 @@ Required manifest entries:
 ```xml
 <!-- AndroidManifest.xml -->
 <uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.BLUETOOTH"
+    android:maxSdkVersion="30" />
+<uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+    android:maxSdkVersion="30" />
 <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 <!-- API 34+: explicit foreground service permission for microphone capture -->
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />

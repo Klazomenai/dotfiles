@@ -40,16 +40,19 @@ cd android/SherpaOnnxAar && ./gradlew :sherpa_onnx:assembleRelease
 # Output: sherpa_onnx/build/outputs/aar/sherpa_onnx-release.aar
 ```
 
-**Gradle dependency** (local AAR via `fileTree`):
+**Gradle dependency** (local AAR — single pinned file, not `fileTree`):
 
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
+    // Use a single pinned files() entry, not fileTree("*.aar").
+    // fileTree globs every AAR in libs/, which can accidentally include old/duplicate
+    // versions and makes builds non-deterministic.
+    implementation(files("libs/sherpa-onnx-1.12.29.aar"))
 }
 ```
 
-Copy `sherpa_onnx-release.aar` into `app/libs/`. Pin the version in the filename (e.g. `sherpa-onnx-1.12.29.aar`) for reproducibility.
+Copy `sherpa_onnx-release.aar` into `app/libs/` and rename to the versioned filename (e.g. `sherpa-onnx-1.12.29.aar`). Update the `files(...)` path when upgrading.
 
 ### `jniLibs/` ABI Layout
 
@@ -172,39 +175,37 @@ val prefs = EncryptedSharedPreferences.create(
 ```kotlin
 // EC keys in Android Keystore support signing/verification only, not encryption.
 // For encrypting tokens at rest, use AES-GCM; store ciphertext + IV in prefs.
-val keyGenerator = KeyGenerator.getInstance(
-    KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore"
-)
-keyGenerator.init(
-    KeyGenParameterSpec.Builder("matrix_token_key",
+//
+// setIsStrongBoxBacked(true) throws StrongBoxUnavailableException on devices without
+// a Secure Element (most non-Pixel hardware). Never call unconditionally — use the
+// helper below which falls back to software-backed TEE automatically.
+fun buildKeySpec(alias: String, strongBox: Boolean): KeyGenParameterSpec =
+    KeyGenParameterSpec.Builder(alias,
         KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
         .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
         .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
         .setKeySize(256)
-        .setIsStrongBoxBacked(true)   // hardware-backed (API 28+)
+        .apply { if (strongBox) setIsStrongBoxBacked(true) }
         .build()
-)
-val secretKey = keyGenerator.generateKey()
+
+// Returns a hardware-backed key where available; falls back to TEE/software silently.
+fun generateAesKey(alias: String): SecretKey {
+    val kg = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+    return try {
+        kg.init(buildKeySpec(alias, strongBox = true))
+        kg.generateKey()
+    } catch (e: StrongBoxUnavailableException) {
+        kg.init(buildKeySpec(alias, strongBox = false))
+        kg.generateKey()
+    }
+}
+val secretKey = generateAesKey("matrix_token_key")
 
 // Encrypt token → store Base64(ciphertext) + Base64(IV) in EncryptedSharedPreferences
-fun encryptToken(token: String): Pair<ByteArray, ByteArray> {
+fun encryptToken(token: String, key: SecretKey): Pair<ByteArray, ByteArray> {
     val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-    cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+    cipher.init(Cipher.ENCRYPT_MODE, key)
     return cipher.doFinal(token.toByteArray()) to cipher.iv
-}
-```
-
-- **StrongBox fallback**: `setIsStrongBoxBacked(true)` throws `StrongBoxUnavailableException` on devices without a Secure Element. Always catch and retry without it:
-
-```kotlin
-fun generateKey(alias: String): Boolean {
-    return try {
-        generateKeyWithStrongBox(alias)
-        true
-    } catch (e: StrongBoxUnavailableException) {
-        generateKeySoftwareBacked(alias)  // falls back to TEE/software
-        false
-    }
 }
 ```
 
@@ -239,7 +240,14 @@ Required manifest entries:
 class HeadsetButtonReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_MEDIA_BUTTON) return
-        val event = intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT) ?: return
+        // getParcelableExtra(String) is deprecated on API 33+; use the typed overload.
+        val event: KeyEvent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT)
+        }
+        event ?: return
         if (event.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
             && event.action == KeyEvent.ACTION_DOWN) {
             // toggle recording
@@ -272,8 +280,14 @@ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
 class AudioCaptureService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = buildNotification()  // required
-        startForeground(NOTIFICATION_ID, notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        // 3-arg startForeground(id, notification, type) requires API 29+.
+        // minSdk 28 devices must use the 2-arg overload — gate on SDK version.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
         return START_STICKY
     }
 }

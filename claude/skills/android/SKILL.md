@@ -167,20 +167,31 @@ val prefs = EncryptedSharedPreferences.create(
 )
 ```
 
-- **`KeyStore` + `KeyPairGenerator`** for Matrix access tokens (asymmetric — tokens encrypted at rest):
+- **`KeyStore` + `KeyGenerator`** for Matrix access tokens (AES-GCM symmetric key — tokens encrypted at rest):
 
 ```kotlin
-val keyPairGenerator = KeyPairGenerator.getInstance(
-    KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore"
+// EC keys in Android Keystore support signing/verification only, not encryption.
+// For encrypting tokens at rest, use AES-GCM; store ciphertext + IV in prefs.
+val keyGenerator = KeyGenerator.getInstance(
+    KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore"
 )
-keyPairGenerator.initialize(
+keyGenerator.init(
     KeyGenParameterSpec.Builder("matrix_token_key",
         KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-        .setDigests(KeyProperties.DIGEST_SHA256)
+        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
         .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+        .setKeySize(256)
         .setIsStrongBoxBacked(true)   // hardware-backed (API 28+)
         .build()
 )
+val secretKey = keyGenerator.generateKey()
+
+// Encrypt token → store Base64(ciphertext) + Base64(IV) in EncryptedSharedPreferences
+fun encryptToken(token: String): Pair<ByteArray, ByteArray> {
+    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+    cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+    return cipher.doFinal(token.toByteArray()) to cipher.iv
+}
 ```
 
 - **StrongBox fallback**: `setIsStrongBoxBacked(true)` throws `StrongBoxUnavailableException` on devices without a Secure Element. Always catch and retry without it:
@@ -199,11 +210,31 @@ fun generateKey(alias: String): Boolean {
 
 ## Bluetooth Headset Audio
 
-```kotlin
-// Manifest
-// <uses-permission android:name="android.permission.RECORD_AUDIO" />
-// <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+Required manifest entries:
 
+```xml
+<!-- AndroidManifest.xml -->
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+<!-- API 34+: explicit foreground service permission for microphone capture -->
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+<application>
+    <!-- Declare foreground service type in the manifest for API 29+ -->
+    <service android:name=".AudioCaptureService"
+        android:foregroundServiceType="microphone" />
+
+    <!-- Register the media button receiver with priority so it receives events
+         before the default system handler. Use android:priority on intent-filter. -->
+    <receiver android:name=".HeadsetButtonReceiver">
+        <intent-filter android:priority="100">
+            <action android:name="android.intent.action.MEDIA_BUTTON" />
+        </intent-filter>
+    </receiver>
+</application>
+```
+
+```kotlin
 // BroadcastReceiver for headset button
 class HeadsetButtonReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -218,10 +249,26 @@ class HeadsetButtonReceiver : BroadcastReceiver() {
 
 // Route audio to Bluetooth SCO headset
 val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
-audioManager.startBluetoothSco()
-audioManager.isBluetoothScoOn = true
+if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    // API 31+: use setCommunicationDevice with USAGE_VOICE_COMMUNICATION
+    val btDevice = audioManager.availableCommunicationDevices
+        .firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+    if (btDevice != null) {
+        audioManager.setCommunicationDevice(btDevice)
+        // When finished: audioManager.clearCommunicationDevice()
+    }
+} else {
+    // API ≤ 30: legacy SCO path — ensure the service is in communication mode first
+    @Suppress("DEPRECATION")
+    audioManager.startBluetoothSco()
+    @Suppress("DEPRECATION")
+    audioManager.isBluetoothScoOn = true
+    // When finished: audioManager.stopBluetoothSco(); audioManager.isBluetoothScoOn = false
+}
 
-// Background audio capture requires a foreground Service with MICROPHONE type
+// Background audio capture requires a foreground Service with MICROPHONE type.
+// The manifest must also declare android:foregroundServiceType="microphone" on the
+// <service> element (API 29+) and FOREGROUND_SERVICE_MICROPHONE permission (API 34+).
 class AudioCaptureService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = buildNotification()  // required
@@ -232,7 +279,7 @@ class AudioCaptureService : Service() {
 }
 ```
 
-Register the receiver with `MEDIA_CONTENT_TYPE` priority and include `<intent-filter>` for `ACTION_MEDIA_BUTTON` in `AndroidManifest.xml`.
+For reliable media button handling (e.g. play/pause on a Bluetooth headset), prefer registering a `MediaSession` and setting `setCallback` — the system routes `ACTION_MEDIA_BUTTON` to the active `MediaSession` automatically on API 21+, without needing a manifest receiver.
 
 ## F-Droid Build Requirements
 

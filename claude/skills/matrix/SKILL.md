@@ -28,20 +28,32 @@ Build with **`-tags goolm`** — pure Go olm implementation, no CGo, no `libolm`
 
 ```go
 import (
+    "context"
+    "os"
+
+    "github.com/rs/zerolog/log"
     "maunium.net/go/mautrix"
     "maunium.net/go/mautrix/crypto/cryptohelper"
     "maunium.net/go/mautrix/event"
     "maunium.net/go/mautrix/id"
 )
 
+ctx := context.Background()
+
 // pickleKey encrypts olm account and session blobs at rest.
 // Store in a Kubernetes Secret — losing it requires full E2EE state reset.
 pickleKey := []byte(os.Getenv("MATRIX_PICKLE_KEY"))
 
-cli, _ := mautrix.NewClient("https://matrix.example.com", "@bot:example.com", "")
+cli, err := mautrix.NewClient("https://matrix.example.com", "@bot:example.com", "")
+if err != nil {
+    log.Fatal().Err(err).Msg("matrix client init failed")
+}
 
 // Pass Postgres DSN or SQLite file path — both supported natively
-helper, _ := cryptohelper.NewCryptoHelper(cli, pickleKey, "postgres://user:pass@host/botdb")
+helper, err := cryptohelper.NewCryptoHelper(cli, pickleKey, "postgres://user:pass@host/botdb")
+if err != nil {
+    log.Fatal().Err(err).Msg("crypto helper init failed")
+}
 
 helper.LoginAs = &mautrix.ReqLogin{
     Type:             mautrix.AuthTypePassword,
@@ -82,11 +94,17 @@ helper.DecryptErrorCallback = func(evt *event.Event, err error) {
     log.Warn().Err(err).Str("event_id", evt.ID.String()).Msg("decryption failed")
 }
 
-// Start sync loop — blocks, exponential backoff on errors, cancel via ctx
-go cli.SyncWithContext(ctx)
+// Start sync loop in a goroutine — runs indefinitely with exponential backoff, cancel via ctx
+go func() {
+    if err := cli.SyncWithContext(ctx); err != nil && err != context.Canceled {
+        log.Error().Err(err).Msg("sync loop exited")
+    }
+}()
 
 // Send message (auto-encrypts if room is encrypted and cli.Crypto is set)
-cli.SendText(ctx, roomID, "Hello from voice bot")
+if _, err := cli.SendText(ctx, roomID, "Hello from voice bot"); err != nil {
+    log.Error().Err(err).Msg("send failed")
+}
 ```
 
 ### SQLCryptoStore Persistence

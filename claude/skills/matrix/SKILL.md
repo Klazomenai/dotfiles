@@ -27,6 +27,8 @@ Build with **`-tags goolm`** — pure Go olm implementation, no CGo, no `libolm`
 ### Client and Crypto Setup
 
 ```go
+package main
+
 import (
     "context"
     "os"
@@ -38,77 +40,84 @@ import (
     "maunium.net/go/mautrix/id"
 )
 
-ctx := context.Background()
+func main() {
+    ctx := context.Background()
 
-// pickleKey encrypts olm account and session blobs at rest.
-// Store in a Kubernetes Secret — losing it requires full E2EE state reset.
-pickleKey := []byte(os.Getenv("MATRIX_PICKLE_KEY"))
+    // pickleKey encrypts olm account and session blobs at rest.
+    // Store in a Kubernetes Secret — losing it requires full E2EE state reset.
+    pickleKey := []byte(os.Getenv("MATRIX_PICKLE_KEY"))
 
-cli, err := mautrix.NewClient("https://matrix.example.com", "@bot:example.com", "")
-if err != nil {
-    log.Fatal().Err(err).Msg("matrix client init failed")
+    cli, err := mautrix.NewClient("https://matrix.example.com", "@bot:example.com", "")
+    if err != nil {
+        log.Fatal().Err(err).Msg("matrix client init failed")
+    }
+
+    // Pass Postgres DSN or SQLite file path — both supported natively
+    helper, err := cryptohelper.NewCryptoHelper(cli, pickleKey, "postgres://user:pass@host/botdb")
+    if err != nil {
+        log.Fatal().Err(err).Msg("crypto helper init failed")
+    }
+
+    helper.LoginAs = &mautrix.ReqLogin{
+        Type:             mautrix.AuthTypePassword,
+        Identifier:       mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: "bot"},
+        Password:         os.Getenv("MATRIX_PASSWORD"),
+        StoreCredentials: true,
+    }
+
+    // Init: upgrades DB schema, shares OLM keys, registers sync handlers automatically
+    if err := helper.Init(ctx); err != nil {
+        log.Fatal().Err(err).Msg("crypto init failed")
+    }
+    cli.Crypto = helper  // enables auto-encrypt on send, auto-decrypt on receive
+
+    // ... continued in Event Handling and Sync Loop below
 }
-
-// Pass Postgres DSN or SQLite file path — both supported natively
-helper, err := cryptohelper.NewCryptoHelper(cli, pickleKey, "postgres://user:pass@host/botdb")
-if err != nil {
-    log.Fatal().Err(err).Msg("crypto helper init failed")
-}
-
-helper.LoginAs = &mautrix.ReqLogin{
-    Type:             mautrix.AuthTypePassword,
-    Identifier:       mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: "bot"},
-    Password:         os.Getenv("MATRIX_PASSWORD"),
-    StoreCredentials: true,
-}
-
-// Init: upgrades DB schema, shares OLM keys, registers sync handlers automatically
-if err := helper.Init(ctx); err != nil {
-    log.Fatal().Err(err).Msg("crypto init failed")
-}
-cli.Crypto = helper  // enables auto-encrypt on send, auto-decrypt on receive
 ```
 
 ### Event Handling and Sync Loop
 
+Continues inside `func main()` after the crypto setup above.
+
 ```go
-syncer, ok := cli.Syncer.(*mautrix.DefaultSyncer)
-if !ok {
-    log.Fatal().Msg("unexpected syncer type — ensure no custom Syncer is installed before this call")
-}
-
-// Server-side self-filter (preferred — reduces sync payload size)
-syncer.FilterJSON = &mautrix.Filter{
-    Room: mautrix.RoomFilter{
-        Timeline: mautrix.FilterPart{
-            NotSenders: []id.UserID{cli.UserID},
-        },
-    },
-}
-
-// Handler receives already-decrypted events transparently when cli.Crypto is set
-syncer.OnEventType(event.EventMessage, func(ctx context.Context, evt *event.Event) {
-    content := evt.Content.AsMessage()
-    log.Info().Str("room", evt.RoomID.String()).Str("text", content.Body).Msg("received")
-})
-
-// Decryption failure hook — log and optionally notify room
-helper.DecryptErrorCallback = func(evt *event.Event, err error) {
-    log.Warn().Err(err).Str("event_id", evt.ID.String()).Msg("decryption failed")
-}
-
-// Start sync loop in a goroutine — runs indefinitely with exponential backoff, cancel via ctx
-go func() {
-    if err := cli.SyncWithContext(ctx); err != nil && err != context.Canceled {
-        log.Error().Err(err).Msg("sync loop exited")
+    syncer, ok := cli.Syncer.(*mautrix.DefaultSyncer)
+    if !ok {
+        log.Fatal().Msg("unexpected syncer type — ensure no custom Syncer is installed before this call")
     }
-}()
 
-// Send message (auto-encrypts if room is encrypted and cli.Crypto is set)
-// roomID is obtained from an invite event, Join response, or hardcoded for known rooms
-roomID := id.RoomID("!example:example.com") // placeholder — replace with real room ID
-if _, err := cli.SendText(ctx, roomID, "Hello from voice bot"); err != nil {
-    log.Error().Err(err).Msg("send failed")
+    // Server-side self-filter (preferred — reduces sync payload size)
+    syncer.FilterJSON = &mautrix.Filter{
+        Room: mautrix.RoomFilter{
+            Timeline: mautrix.FilterPart{
+                NotSenders: []id.UserID{cli.UserID},
+            },
+        },
+    }
+
+    // Handler receives already-decrypted events transparently when cli.Crypto is set
+    syncer.OnEventType(event.EventMessage, func(ctx context.Context, evt *event.Event) {
+        content := evt.Content.AsMessage()
+        log.Info().Str("room", evt.RoomID.String()).Str("text", content.Body).Msg("received")
+    })
+
+    // Decryption failure hook — log and optionally notify room
+    helper.DecryptErrorCallback = func(evt *event.Event, err error) {
+        log.Warn().Err(err).Str("event_id", evt.ID.String()).Msg("decryption failed")
+    }
+
+    // Start sync loop in a goroutine — runs indefinitely with exponential backoff, cancel via ctx
+    go func() {
+        if err := cli.SyncWithContext(ctx); err != nil && err != context.Canceled {
+            log.Error().Err(err).Msg("sync loop exited")
+        }
+    }()
+
+    // Send message (auto-encrypts if room is encrypted and cli.Crypto is set)
+    // roomID is obtained from an invite event, Join response, or hardcoded for known rooms
+    roomID := id.RoomID("!example:example.com") // placeholder — replace with real room ID
+    if _, err := cli.SendText(ctx, roomID, "Hello from voice bot"); err != nil {
+        log.Error().Err(err).Msg("send failed")
+    }
 }
 ```
 

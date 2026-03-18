@@ -1,9 +1,10 @@
 ---
 name: matrix
 description: >-
-  Matrix protocol, mautrix-go bot patterns (Go), Tuwunel homeserver operations,
-  and E2EE lifecycle management. Use when working with Matrix protocol concepts,
-  mautrix-go bots, Tuwunel configuration, or E2EE bootstrap ceremonies.
+  Matrix protocol, mautrix-go bot patterns (Go, golang), Tuwunel homeserver operations,
+  and E2EE lifecycle management including olm/megolm key exchange. Use when working with
+  Matrix protocol concepts, mautrix-go bots, Tuwunel configuration, or E2EE bootstrap
+  ceremonies.
 ---
 
 # Matrix Skill
@@ -105,18 +106,18 @@ Continues inside `func main()` after the crypto setup above.
         log.Warn().Err(err).Str("event_id", evt.ID.String()).Msg("decryption failed")
     }
 
-    // Start sync loop in a goroutine — runs indefinitely with exponential backoff, cancel via ctx
-    go func() {
-        if err := cli.SyncWithContext(ctx); err != nil && err != context.Canceled {
-            log.Error().Err(err).Msg("sync loop exited")
-        }
-    }()
-
-    // Send message (auto-encrypts if room is encrypted and cli.Crypto is set)
-    // roomID is obtained from an invite event, Join response, or hardcoded for known rooms
+    // Send startup message before the blocking sync loop begins.
+    // In production, outbound sends are typically triggered inside event handlers.
+    // roomID is obtained from an invite event, Join response, or hardcoded for known rooms.
     roomID := id.RoomID("!example:example.com") // placeholder — replace with real room ID
     if _, err := cli.SendText(ctx, roomID, "Hello from voice bot"); err != nil {
         log.Error().Err(err).Msg("send failed")
+    }
+
+    // SyncWithContext blocks — runs indefinitely with exponential backoff.
+    // Cancel ctx (e.g. via os/signal) to shut down cleanly.
+    if err := cli.SyncWithContext(ctx); err != nil && err != context.Canceled {
+        log.Error().Err(err).Msg("sync loop exited")
     }
 }
 ```
@@ -132,7 +133,7 @@ Continues inside `func main()` after the crypto setup above.
 
 - Bots cannot perform interactive verification (QR/emoji). `self_sign: true` generates and self-signs cross-signing keys automatically on first `Init()`.
 - Without it, well-configured clients will stop encrypting to the bot's device after April 2026 (MSC4350 client enforcement).
-- Must be configured **before** the first room join — there is no documented path to retrofit encryption into existing rooms.
+- Must be configured **before** the first `helper.Init()` call — cross-signing keys are generated once and persisted; retrofitting them into an existing `OlmAccount` is not supported.
 
 ## Tuwunel Operations
 
@@ -243,5 +244,5 @@ Verify with `appservice_list`.
 - **Sharing crypto DB between programs** — never point the bot at another process's database; `crypto_*` table ownership must be exclusive.
 - **`generate` value for `pickle_key` with `--no-update`** — auto-generates a new random key on every pod restart, corrupting all persisted olm sessions.
 - **Skipping `self_sign`** — bots stop receiving encrypted messages from well-configured clients after April 2026 (MSC4350 enforcement).
-- **Enabling E2EE after rooms are created** — no documented retrofit path; plan the crypto config before the first room join.
+- **Expecting history re-encryption when enabling E2EE in an existing room** — `m.room.encryption` can be added to any room at any time, but it only protects events sent after the state change. Pre-existing messages remain unencrypted and readable from server-side storage. Plan E2EE from room creation; do not expect retroactive protection.
 - **Client-side self-filter only** — `if evt.Sender == cli.UserID { return }` works but sends unnecessary events over the wire; use `FilterPart.NotSenders` (server-side) for production bots.

@@ -20,9 +20,16 @@ description: >-
 
 ## Native Library Integration (JNI/AAR) — Sherpa-ONNX
 
-Sherpa-ONNX (`com.k2fsa.sherpa.onnx`) is the primary library for on-device ASR and TTS. It runs piper-format ONNX voice models natively on Android with an Apache 2.0 license.
+Sherpa-ONNX (`com.github.k2-fsa:sherpa-onnx-android`) is the primary library for on-device ASR and TTS. It runs piper-format ONNX voice models natively on Android with an Apache 2.0 license.
 
-**Sherpa-ONNX is not published to Maven Central or JitPack.** Build the AAR from GitHub releases:
+**Sherpa-ONNX is published to Maven Central.** You may consume it directly via Gradle or build the AAR from GitHub releases for tighter control over native library versions (e.g. for F-Droid reproducible builds):
+
+```kotlin
+// Option A — Maven Central (simplest; check releases page for latest version)
+implementation("com.github.k2-fsa:sherpa-onnx-android:1.12.29")
+```
+
+Build from source (Option B — local AAR, required for F-Droid or custom ABI sets):
 
 ```bash
 # Download pre-compiled JNI libs for the target version
@@ -205,7 +212,8 @@ val secretKey = generateAesKey("matrix_token_key")
 fun encryptToken(token: String, key: SecretKey): Pair<ByteArray, ByteArray> {
     val cipher = Cipher.getInstance("AES/GCM/NoPadding")
     cipher.init(Cipher.ENCRYPT_MODE, key)
-    return cipher.doFinal(token.toByteArray()) to cipher.iv
+    // Use explicit UTF-8 charset — platform default varies by locale/device.
+    return cipher.doFinal(token.toByteArray(Charsets.UTF_8)) to cipher.iv
 }
 ```
 
@@ -226,8 +234,11 @@ Required manifest entries:
         android:foregroundServiceType="microphone" />
 
     <!-- Register the media button receiver with priority so it receives events
-         before the default system handler. Use android:priority on intent-filter. -->
-    <receiver android:name=".HeadsetButtonReceiver">
+         before the default system handler. Use android:priority on intent-filter.
+         android:exported="true" is required for targetSdk 31+ when an intent-filter
+         is present; omitting it causes a build-time manifest validation failure. -->
+    <receiver android:name=".HeadsetButtonReceiver"
+        android:exported="true">
         <intent-filter android:priority="100">
             <action android:name="android.intent.action.MEDIA_BUTTON" />
         </intent-filter>
@@ -255,7 +266,11 @@ class HeadsetButtonReceiver : BroadcastReceiver() {
     }
 }
 
-// Route audio to Bluetooth SCO headset
+// Route audio to Bluetooth SCO headset.
+// BLUETOOTH_CONNECT (API 31+) is a runtime permission — request it before querying
+// Bluetooth devices. availableCommunicationDevices returns an empty list (and
+// setCommunicationDevice is a no-op) if the permission has not been granted.
+// Check with: ActivityCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_CONNECT)
 val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
     // API 31+: use setCommunicationDevice with USAGE_VOICE_COMMUNICATION

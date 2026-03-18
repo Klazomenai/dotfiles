@@ -19,7 +19,7 @@ fi
 #   sudo/command/exec        — command-runners
 #   (env)? (VAR=val )*       — inline env assignments, optionally preceded by 'env'
 # Note: 'bash -c "git push ..."' is not parsed — inner quoted content is out of scope.
-if ! echo "$COMMAND" | grep -qE '(^|[;|&({])[[:space:]]*((sudo|command|exec)[[:space:]]+|(env[[:space:]]+)?([A-Z_][A-Z0-9_]*=[^[:space:]]*[[:space:]]+)*)?git([[:space:]]+[^[:space:]]+)*[[:space:]]+push($|[^a-zA-Z0-9_-])'; then
+if ! echo "$COMMAND" | grep -qE '(^|[;|&({])[[:space:]]*((sudo|command|exec)[[:space:]]+|(env[[:space:]]+)?([A-Z_][A-Z0-9_]*=[^[:space:]]*[[:space:]]+)*)?git([[:space:]]+(-[Cc][[:space:]]+[^[:space:]]+|-[^[:space:]]*))*[[:space:]]+push($|[^a-zA-Z0-9_-])'; then
   exit 0
 fi
 
@@ -59,7 +59,8 @@ while IFS= read -r push_segment; do
 
   # Strip everything up to and including 'git push', consuming any wrapper prefix
   # (sudo, command, exec, env, VAR=val) and any git global options (-C, -c, etc.)
-  # that precede 'push'. The ([^[:space:]]+[[:space:]]+)* group skips option tokens.
+  # that precede 'push'. The ([^[:space:]]+[[:space:]]+)* group skips all token types
+  # (more permissive than the detector — sed only needs to locate 'push', not validate).
   after_push=$(echo "$push_segment" | sed -E 's/.*git[[:space:]]+([^[:space:]]+[[:space:]]+)*push//')
 
   # Extract positionals, splitting on any whitespace (tr -s handles tabs and
@@ -111,6 +112,6 @@ while IFS= read -r push_segment; do
     fi
   done <<< "$refspecs"
 
-done < <(echo "$COMMAND" | grep -oE '(^|[;|&({])[[:space:]]*((sudo|command|exec)[[:space:]]+|(env[[:space:]]+)?([A-Z_][A-Z0-9_]*=[^[:space:]]*[[:space:]]+)*)?git([[:space:]]+[^[:space:]]+)*[[:space:]]+push[^;&|><)]*')
+done < <(echo "$COMMAND" | grep -oE '(^|[;|&({])[[:space:]]*((sudo|command|exec)[[:space:]]+|(env[[:space:]]+)?([A-Z_][A-Z0-9_]*=[^[:space:]]*[[:space:]]+)*)?git([[:space:]]+(-[Cc][[:space:]]+[^[:space:]]+|-[^[:space:]]*))*[[:space:]]+push([^a-zA-Z0-9_-][^;&|><)]*|$)')
 
 exit 0

@@ -53,8 +53,9 @@ func main() {
         log.Fatal().Err(err).Msg("matrix client init failed")
     }
 
-    // Pass Postgres DSN or SQLite file path — both supported natively
-    helper, err := cryptohelper.NewCryptoHelper(cli, pickleKey, "postgres://user:pass@host/botdb")
+    // Pass Postgres DSN or SQLite file path — both supported natively.
+    // Never inline credentials — read DSN from an environment variable or secret manager.
+    helper, err := cryptohelper.NewCryptoHelper(cli, pickleKey, os.Getenv("MATRIX_DB_DSN"))
     if err != nil {
         log.Fatal().Err(err).Msg("crypto helper init failed")
     }
@@ -72,13 +73,12 @@ func main() {
     }
     cli.Crypto = helper  // enables auto-encrypt on send, auto-decrypt on receive
 
-    // ... continued in Event Handling and Sync Loop below
-}
+    // ... continued in Event Handling and Sync Loop below — do not close func main() here
 ```
 
 ### Event Handling and Sync Loop
 
-Continues inside `func main()` after the crypto setup above.
+This snippet is the direct continuation of `func main()` above. In practice both sections form a single function; they are split here for readability.
 
 ```go
     syncer, ok := cli.Syncer.(*mautrix.DefaultSyncer)
@@ -193,10 +193,12 @@ All admin commands are sent as messages in the `#admins:example.com` room.
 
 ### Appservice Registration
 
-Send `appservice_register` in the admin room, followed immediately by a YAML code block:
+Send `appservice_register` as a plain message in the admin room, then immediately follow it with a separate YAML code block message:
 
-````
+```text
 appservice_register
+```
+
 ```yaml
 id: "voice-bot"
 url: "http://voice-bot.default.svc.cluster.local:8080"
@@ -210,7 +212,6 @@ namespaces:
   aliases: []
   rooms: []
 ```
-````
 
 Verify with `appservice_list`.
 

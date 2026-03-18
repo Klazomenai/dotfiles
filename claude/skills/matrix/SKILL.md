@@ -72,7 +72,10 @@ cli.Crypto = helper  // enables auto-encrypt on send, auto-decrypt on receive
 ### Event Handling and Sync Loop
 
 ```go
-syncer := cli.Syncer.(*mautrix.DefaultSyncer)
+syncer, ok := cli.Syncer.(*mautrix.DefaultSyncer)
+if !ok {
+    log.Fatal().Msg("unexpected syncer type — ensure no custom Syncer is installed before this call")
+}
 
 // Server-side self-filter (preferred — reduces sync payload size)
 syncer.FilterJSON = &mautrix.Filter{
@@ -102,6 +105,8 @@ go func() {
 }()
 
 // Send message (auto-encrypts if room is encrypted and cli.Crypto is set)
+// roomID is obtained from an invite event, Join response, or hardcoded for known rooms
+roomID := id.RoomID("!example:example.com") // placeholder — replace with real room ID
 if _, err := cli.SendText(ctx, roomID, "Hello from voice bot"); err != nil {
     log.Error().Err(err).Msg("send failed")
 }
@@ -172,6 +177,7 @@ All admin commands are sent as messages in the `#admins:example.com` room.
 | `token issue [--max-uses N] [--max-age "1d"] [--once]` | Create registration token |
 | `token revoke <token>` | Revoke registration token |
 | `token list` | List all registration tokens |
+| `force_join_room <@user:example.com> <#room:example.com>` | Force a local user to join a room (admin only) |
 | `show_config` | Display current running config |
 | `reload_config [path]` | Reload config without restart |
 

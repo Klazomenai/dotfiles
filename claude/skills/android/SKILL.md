@@ -155,7 +155,9 @@ class SherpaOnnxSttEngine(private val context: Context) : SttEngine {
     // Check for specific files (not just non-empty dir) to detect partial copies.
     private fun copyAssetsToDisk(): File {
         val destDir = File(context.filesDir, "stt")
-        if (destDir.exists() && File(destDir, "tiny.en-encoder.int8.onnx").length() > 0) return destDir
+        val encoderOk = File(destDir, "tiny.en-encoder.int8.onnx").let { it.exists() && it.length() > 0 }
+        val decoderOk = File(destDir, "tiny.en-decoder.int8.onnx").let { it.exists() && it.length() > 0 }
+        if (destDir.exists() && encoderOk && decoderOk) return destDir
         destDir.mkdirs()
         context.assets.list("stt")?.forEach { name ->
             context.assets.open("stt/$name").use { src ->
@@ -433,7 +435,7 @@ fastlane/metadata/android/
 name: CI
 on:
   push:
-    branches: [main]    # CI on merge to main
+    branches: [main]    # CI on push to main
   pull_request:          # CI on PRs — do NOT use [push, pull_request] (fires twice on PR branches)
 
 jobs:

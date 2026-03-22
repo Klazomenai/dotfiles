@@ -1,6 +1,6 @@
 ---
 name: nix
-description: Nix flake hygiene, reproducible builds, OCI image patterns, devenv usage, and security enforcement. Use when working with flake.nix, devenv.nix, Nix builds, or Nix-based OCI container images.
+description: Nix flake hygiene, reproducible builds, OCI image patterns, devenv usage, Android SDK provisioning, and security enforcement. Use when working with flake.nix, devenv.nix, Nix builds, or Nix-based OCI container images.
 ---
 
 # Nix Skill
@@ -141,6 +141,73 @@ description: Nix flake hygiene, reproducible builds, OCI image patterns, devenv 
   };
   ```
 - These run automatically on `git commit` when the devenv is active
+
+## Android SDK Provisioning
+
+Use `pkgs.androidenv.composeAndroidPackages` to declaratively provision the Android SDK — no manual SDK Manager installs, fully reproducible across machines and CI.
+
+### License Acceptance
+
+Android SDK has an unfree license. Both `allowUnfree` and explicit license acceptance are required:
+
+```nix
+# In flake.nix
+pkgs = import nixpkgs {
+  inherit system;
+  config = {
+    allowUnfree = true;
+    android_sdk.accept_license = true;
+  };
+};
+```
+
+```nix
+# In devenv.nix
+nixpkgs.config.allowUnfree = true;
+nixpkgs.config.android_sdk.accept_license = true;
+```
+
+### Composing the SDK
+
+```nix
+androidComposition = pkgs.androidenv.composeAndroidPackages {
+  buildToolsVersions = [ "36.0.0" ];   # match compileSdk in build.gradle.kts
+  platformVersions = [ "36" ];          # match targetSdk
+  includeNDK = false;                   # only if JNI native builds needed
+  includeEmulator = false;              # not needed for CI or headless builds
+  includeSources = false;
+  includeSystemImages = false;
+};
+```
+
+### Environment Variables
+
+Gradle and AGP require `ANDROID_HOME` / `ANDROID_SDK_ROOT`:
+
+```nix
+ANDROID_HOME = "${androidComposition.androidsdk}/libexec/android-sdk";
+ANDROID_SDK_ROOT = "${androidComposition.androidsdk}/libexec/android-sdk";
+```
+
+### CI Integration (GitHub Actions)
+
+Use `nix develop --command` to run Gradle inside the Nix environment:
+
+```yaml
+steps:
+  - uses: DeterminateSystems/nix-installer-action@v14
+  - uses: DeterminateSystems/magic-nix-cache-action@v8
+  - run: nix develop --command ./gradlew lint test assembleDebug
+```
+
+This ensures CI uses the exact same SDK versions as local development — no `actions/setup-java` or `android-actions/setup-android` needed.
+
+### Version Alignment
+
+Keep SDK versions consistent across all files:
+- `buildToolsVersions` / `platformVersions` in `flake.nix` and `devenv.nix`
+- `compileSdk` / `targetSdk` in `app/build.gradle.kts`
+- See the Android skill for Gradle-side configuration
 
 ## Security
 

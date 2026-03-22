@@ -18,15 +18,32 @@ description: >-
 - `settings.gradle.kts` defines `dependencyResolutionManagement.repositories`; do not add repo declarations in module-level `build.gradle.kts`.
 - `gradle/libs.versions.toml` (version catalog) for all dependency version pins — single source of truth, prevents drift.
 
+### Version Catalog Hygiene
+
+- Always use `version.ref` in library entries — never inline `version = "x.y.z"` (causes duplication with the `[versions]` section).
+- JitPack versions may require a `v` prefix (e.g. `sherpaOnnx = "v1.12.29"`) — this matches upstream git tags.
+- Verify versions against cloned upstream repos, not internet searches. Clone the repo, read `gradle.properties`, `CMakeLists.txt`, or `Cargo.toml` for the authoritative version.
+- Upstream version sources vary: Sherpa-ONNX versions are in `CMakeLists.txt`, matrix-rust-sdk Android bindings are in `matrix-org/matrix-rust-components-kotlin/buildSrc/src/main/kotlin/BuildVersionsSDK.kt`.
+
 ## Native Library Integration (JNI/AAR) — Sherpa-ONNX
 
-Sherpa-ONNX (`com.github.k2-fsa:sherpa-onnx-android`) is the primary library for on-device ASR and TTS. It runs piper-format ONNX voice models natively on Android with an Apache 2.0 license.
+Sherpa-ONNX (`com.github.k2-fsa:sherpa-onnx`) is the primary library for on-device ASR and TTS. It runs piper-format ONNX voice models natively on Android with an Apache 2.0 license.
 
-**Sherpa-ONNX is published to Maven Central.** You may consume it directly via Gradle or build the AAR from GitHub releases for tighter control over native library versions (e.g. for F-Droid reproducible builds):
+**Sherpa-ONNX is published via JitPack** (not Maven Central). The version requires a `v` prefix matching upstream git tags. Scope the JitPack repository to only the Sherpa-ONNX group:
 
 ```kotlin
-// Option A — Maven Central (simplest; check releases page for latest version)
-implementation("com.github.k2-fsa:sherpa-onnx-android:1.12.29")
+// settings.gradle.kts — scope JitPack to Sherpa-ONNX only (supply-chain hygiene)
+maven {
+    url = uri("https://jitpack.io")
+    content {
+        includeGroup("com.github.k2-fsa")
+    }
+}
+```
+
+```kotlin
+// Option A — JitPack (simplest; verify version against cloned k2-fsa/sherpa-onnx repo)
+implementation("com.github.k2-fsa:sherpa-onnx:v1.12.29")  // note: 'v' prefix required
 ```
 
 Build from source (Option B — local AAR, required for F-Droid or custom ABI sets):
@@ -118,6 +135,56 @@ class FakeSpeechRecognizer : SpeechRecognizer {
 }
 ```
 
+### OfflineRecognizer (Batch/Offline STT)
+
+For short utterances (voice commands), use `OfflineRecognizer` with `OfflineWhisperModelConfig`. Unlike `OnlineRecognizer`, there is no `isEndpoint()` or `reset()` — feed the complete audio and decode once:
+
+```kotlin
+interface SttEngine {
+    suspend fun transcribe(audioFile: File): String
+    fun close()
+}
+
+class SherpaOnnxSttEngine(private val context: Context) : SttEngine {
+    private var recognizerInstance: OfflineRecognizer? = null
+
+    private val recognizer: OfflineRecognizer
+        get() = recognizerInstance ?: createRecognizer().also { recognizerInstance = it }
+
+    private fun createRecognizer(): OfflineRecognizer {
+        val sttDir = copyAssetsToDisk().absolutePath
+        val config = OfflineRecognizerConfig(
+            featConfig = FeatureConfig(sampleRate = 16000, featureDim = 80),
+            modelConfig = OfflineModelConfig(
+                whisper = OfflineWhisperModelConfig(
+                    encoder = "$sttDir/tiny.en-encoder.int8.onnx",
+                    decoder = "$sttDir/tiny.en-decoder.int8.onnx",
+                    language = "en",
+                    task = "transcribe",
+                ),
+                numThreads = 2, debug = false, provider = "cpu",
+            ),
+        )
+        return OfflineRecognizer(config = config)
+    }
+
+    override suspend fun transcribe(audioFile: File): String = withContext(Dispatchers.IO) {
+        val stream = recognizer.createStream()
+        try {
+            val bytes = audioFile.readBytes()
+            val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+            val samples = FloatArray(bytes.size / 2) { buf.short / 32768f }
+            stream.acceptWaveform(samples, 16000)
+            recognizer.decode(stream)
+            recognizer.getResult(stream).text
+        } finally { stream.release() }
+    }
+
+    // Idempotent — nullable instance avoids lazy-init on close()
+    override fun close() { recognizerInstance?.release(); recognizerInstance = null }
+}
+```
+
 ### Sherpa-ONNX Key Classes
 
 | Class | Use |
@@ -159,7 +226,8 @@ val audio: GeneratedAudio = tts.generate(text = "Hello world", sid = 0, speed = 
 
 mautrix is a **server-side framework only** — there is no mautrix Android SDK. Android clients connect to any Matrix homeserver (including Tuwunel) using the standard Matrix CS API:
 
-- **matrix-rust-sdk** Kotlin bindings: the recommended modern client. Provides E2EE, sync, and room management. Check the project's releases for current AAR/Maven coordinates.
+- **matrix-rust-sdk** Kotlin bindings (`org.matrix.rustcomponents:sdk-android`) — the recommended modern client. Provides E2EE, sync, and room management. Published to Maven Central.
+- **Version source**: The Android bindings version (e.g. `26.03.19`) comes from `matrix-org/matrix-rust-components-kotlin`, NOT from the `matrix-rust-sdk` repo itself (which uses FFI crate versioning like `0.16.0`). Always verify against the components-kotlin repo.
 - Connects via standard `/_matrix/client/` API endpoints — fully compatible with Tuwunel and all Conduit-family homeservers.
 
 ## Android Keystore
@@ -349,7 +417,10 @@ fastlane/metadata/android/
 
 ```yaml
 name: CI
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]    # CI on merge to main
+  pull_request:          # CI on PRs — do NOT use [push, pull_request] (fires twice on PR branches)
 
 jobs:
   build:
@@ -383,3 +454,6 @@ Unit tests run on the JVM and must not invoke JNI — mock all native engines vi
 - **`BroadcastReceiver` without foreground Service** — background audio capture fails on API 26+ without a foreground Service declaring `FOREGROUND_SERVICE_TYPE_MICROPHONE`.
 - **Skipping StrongBox fallback** — `setIsStrongBoxBacked(true)` throws `StrongBoxUnavailableException` on devices without a Secure Element (most non-Pixel hardware). Always catch and retry software-backed.
 - **Referencing piper1-gpl for Android** — GPL v3, no Android AAR, no JNI bridge, no NDK toolchain support. Use Sherpa-ONNX with piper ONNX model files instead.
+- **`on: [push, pull_request]` CI trigger** — fires CI twice on every push to a branch with an open PR. Scope push to `main` only: `on: { push: { branches: [main] }, pull_request: }`.
+- **Unscoped JitPack repository** — `maven { url = uri("https://jitpack.io") }` without `content { includeGroup(...) }` expands the supply-chain trust boundary to all of JitPack. Always scope to the specific group needed.
+- **Inline `version = "x.y.z"` in version catalog** — duplicates the version with the `[versions]` section. Always use `version.ref`.

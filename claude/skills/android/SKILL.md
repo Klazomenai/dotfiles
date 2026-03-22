@@ -151,6 +151,20 @@ class SherpaOnnxSttEngine(private val context: Context) : SttEngine {
     private val recognizer: OfflineRecognizer
         get() = recognizerInstance ?: createRecognizer().also { recognizerInstance = it }
 
+    // Copy ONNX models from assets/ to filesDir/ (JNI needs file-system paths).
+    // Check for specific files (not just non-empty dir) to detect partial copies.
+    private fun copyAssetsToDisk(): File {
+        val destDir = File(context.filesDir, "stt")
+        if (destDir.exists() && File(destDir, "tiny.en-encoder.int8.onnx").length() > 0) return destDir
+        destDir.mkdirs()
+        context.assets.list("stt")?.forEach { name ->
+            context.assets.open("stt/$name").use { src ->
+                FileOutputStream(File(destDir, name)).use { out -> src.copyTo(out) }
+            }
+        }
+        return destDir
+    }
+
     private fun createRecognizer(): OfflineRecognizer {
         val sttDir = copyAssetsToDisk().absolutePath
         val config = OfflineRecognizerConfig(

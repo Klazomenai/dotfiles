@@ -171,8 +171,8 @@ nixpkgs.config.android_sdk.accept_license = true;
 
 ```nix
 androidComposition = pkgs.androidenv.composeAndroidPackages {
-  buildToolsVersions = [ "36.0.0" ];   # match compileSdk in build.gradle.kts
-  platformVersions = [ "36" ];          # match targetSdk
+  buildToolsVersions = [ "36.0.0" ];   # Android Build Tools version
+  platformVersions = [ "36" ];          # API level — align with compileSdk/targetSdk
   includeNDK = false;                   # only if JNI native builds needed
   includeEmulator = false;              # not needed for CI or headless builds
   includeSources = false;
@@ -182,25 +182,26 @@ androidComposition = pkgs.androidenv.composeAndroidPackages {
 
 ### Environment Variables
 
-Gradle and AGP require `ANDROID_HOME` / `ANDROID_SDK_ROOT`:
+In Nix builds, export `ANDROID_SDK_ROOT` (preferred) and `ANDROID_HOME` (legacy fallback) so Gradle discovers the SDK without `local.properties`:
 
 ```nix
-ANDROID_HOME = "${androidComposition.androidsdk}/libexec/android-sdk";
 ANDROID_SDK_ROOT = "${androidComposition.androidsdk}/libexec/android-sdk";
+ANDROID_HOME = "${androidComposition.androidsdk}/libexec/android-sdk";  # legacy fallback
 ```
 
 ### CI Integration (GitHub Actions)
 
-Use `nix develop --command` to run Gradle inside the Nix environment:
+Use `nix develop --command` to run Gradle inside the Nix environment. The dev shell provides JDK, Android SDK, and Gradle — no separate setup actions needed:
 
 ```yaml
 steps:
+  - uses: actions/checkout@v4
   - uses: DeterminateSystems/nix-installer-action@v14
   - uses: DeterminateSystems/magic-nix-cache-action@v8
   - run: nix develop --command ./gradlew lint test assembleDebug
 ```
 
-This ensures CI uses the exact same SDK versions as local development — no `actions/setup-java` or `android-actions/setup-android` needed.
+This ensures CI uses the exact same SDK and JDK versions as local development.
 
 ### Version Alignment
 

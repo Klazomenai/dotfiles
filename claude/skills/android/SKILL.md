@@ -2,9 +2,10 @@
 name: android
 description: >-
   Android/Kotlin development — Gradle Kotlin DSL, JNI/AAR native library
-  integration (Sherpa-ONNX for ASR and TTS with piper ONNX models), Android
-  Keystore credential storage, Bluetooth headset audio, and F-Droid reproducible
-  build requirements. Use when writing Android/Kotlin code, reviewing Android PRs,
+  integration (Sherpa-ONNX for ASR and TTS with piper ONNX models), matrix-rust-sdk
+  Kotlin bindings (Sliding Sync, E2EE, session persistence), Android Keystore
+  credential storage, Bluetooth headset audio, and F-Droid reproducible build
+  requirements. Use when writing Android/Kotlin code, reviewing Android PRs,
   or configuring Gradle/JNI tooling.
 ---
 
@@ -238,13 +239,135 @@ val audio: GeneratedAudio = tts.generate(text = "Hello world", sid = 0, speed = 
 
 **Do not reference `piper1-gpl` (`OHF-Voice/piper1-gpl`)** — it is GPL v3, has no Android support, and cannot produce an AAR. Sherpa-ONNX runs the same model format under Apache 2.0.
 
-## Matrix Client
+## Matrix Client (matrix-rust-sdk)
 
-mautrix is a **server-side framework only** — there is no mautrix Android SDK. Android clients connect to any Matrix homeserver (including Tuwunel) using the standard Matrix CS API:
+mautrix is a **server-side framework only** — there is no mautrix Android SDK. Android clients use the matrix-rust-sdk Kotlin bindings (UniFFI-generated). See the [Matrix skill](../matrix/SKILL.md) for protocol and E2EE concepts.
 
-- **matrix-rust-sdk** Kotlin bindings (`org.matrix.rustcomponents:sdk-android`) — the recommended modern client. Provides E2EE, sync, and room management. Published to Maven Central.
-- **Version source**: The Android bindings version (e.g. `26.03.19`) comes from `matrix-org/matrix-rust-components-kotlin`, NOT from the `matrix-rust-sdk` repo itself (which uses FFI crate versioning like `0.16.0`). Always verify against the components-kotlin repo.
-- Connects via standard `/_matrix/client/` API endpoints — fully compatible with Tuwunel and all Conduit-family homeservers.
+- **Artifact**: `org.matrix.rustcomponents:sdk-android` on Maven Central. No extra repository needed.
+- **Version source**: Android bindings version (e.g. `26.03.19`) comes from `matrix-org/matrix-rust-components-kotlin`, NOT from `matrix-rust-sdk` itself (which uses FFI crate versioning like `0.16.0`).
+- **Sliding Sync only**: The SDK only exposes `SyncService` (Simplified Sliding Sync / MSC4186). Traditional `/sync` v2 is NOT available through the FFI. Use `SlidingSyncVersionBuilder.DISCOVER_NATIVE`.
+- **E2EE is automatic** when a SQLite store is configured via `sessionPaths()`. No explicit key management for basic usage.
+
+### ClientBuilder and Login
+
+```kotlin
+import org.matrix.rustcomponents.sdk.*
+
+val dataDir = File(context.filesDir, "matrix-data").apply { mkdirs() }
+val cacheDir = File(context.cacheDir, "matrix-cache").apply { mkdirs() }
+
+val client = ClientBuilder()
+    .homeserverUrl("https://matrix.example.com")
+    .slidingSyncVersionBuilder(SlidingSyncVersionBuilder.DISCOVER_NATIVE)
+    .sessionPaths(dataDir.absolutePath, cacheDir.absolutePath)
+    .build()  // suspend
+
+client.login(username, password, "MyApp Android", null)  // suspend
+
+// Persist session for later restore
+val session: Session = client.session()
+// Session fields: accessToken, refreshToken?, userId, deviceId, homeserverUrl,
+//                 oidcData?, slidingSyncVersion
+```
+
+### Session Restore
+
+```kotlin
+val client = ClientBuilder()
+    .homeserverUrl(savedHomeserverUrl)
+    .slidingSyncVersionBuilder(SlidingSyncVersionBuilder.DISCOVER_NATIVE)
+    .sessionPaths(dataDir.absolutePath, cacheDir.absolutePath)
+    .build()
+
+client.restoreSession(savedSession)  // suspend
+```
+
+Store `Session` fields in `EncryptedSharedPreferences` / Android Keystore (see Keystore section below). The SQLite store at `sessionPaths` persists E2EE keys — do NOT delete it between restarts.
+
+### Sync and Timeline
+
+```kotlin
+// Start Sliding Sync
+val syncService = client.syncService().finish()
+syncService.start()  // suspend — begins background sync
+
+// Listen to a room's timeline
+val room = client.getRoom(roomId) ?: error("Room not found")
+val timeline = room.timeline()  // suspend
+
+val handle = timeline.addListener(object : TimelineListener {
+    override fun onUpdate(diff: List<TimelineDiff>) {
+        for (d in diff) {
+            val items = when (d) {
+                is TimelineDiff.Append -> d.values
+                is TimelineDiff.PushBack -> listOf(d.value)
+                else -> emptyList()
+            }
+            items.forEach { processItem(it) }
+        }
+    }
+})
+
+// Stop sync
+syncService.stop()
+handle.close()
+```
+
+### Message Extraction
+
+```kotlin
+fun processItem(item: TimelineItem) {
+    val event = item.asEvent() ?: return
+    if (event.isOwn) return  // self-filter
+    val content = event.content
+    if (content !is TimelineItemContent.MsgLike) return
+    val kind = content.content.kind
+    if (kind !is MsgLikeKind.Message) return
+    val msgType = kind.content.msgType
+    if (msgType !is MessageType.Text) return
+    val body = msgType.content.body  // the message text
+    // process body...
+}
+```
+
+### Sending Messages
+
+```kotlin
+// sendRaw for custom event fields or standard m.room.message
+room.sendRaw("m.room.message", """{"msgtype":"m.text","body":"hello"}""")
+```
+
+Use `Room.sendRaw(eventType, contentJson)` — the typed `Timeline.send()` API works but `sendRaw` is simpler for JSON payloads.
+
+### Custom Event Fields Limitation
+
+The SDK's typed API (`TextMessageContent`) strips custom JSON fields from event content during Rust→Kotlin conversion. Only `body` and `formatted` are accessible. For custom metadata (e.g. crew member, verbosity), use a body-prefix convention:
+
+```
+[crewname:verbosity] response text here
+```
+
+Parse with a regex on the receiving side. Proper raw event access is a future improvement.
+
+### ProGuard Rules (matrix-rust-sdk)
+
+The SDK uses JNA for the native bridge. Its `consumer-rules.pro` is empty — add these to the app's `proguard-rules.pro`:
+
+```
+-keep class net.java.dev.jna.** { *; }
+-keep class org.matrix.rustcomponents.sdk.** { *; }
+-keep class uniffi.** { *; }
+```
+
+Also keep any app classes implementing SDK callback interfaces (`TimelineListener`, `SyncServiceStateObserver`, etc.).
+
+### JVM Heap for Large SDKs
+
+The UniFFI-generated Kotlin file is ~60K lines. Combined with Sherpa-ONNX, the default JVM metaspace (256m) is insufficient for CI builds. Add to `gradle.properties`:
+
+```properties
+org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
+```
 
 ## Android Keystore
 
@@ -473,3 +596,7 @@ Unit tests run on the JVM and must not invoke JNI — mock all native engines vi
 - **`on: [push, pull_request]` CI trigger** — fires CI twice on every push to a branch with an open PR. Scope push to `main` only: `on: { push: { branches: [main] }, pull_request: }`.
 - **Unscoped JitPack repository** — `maven { url = uri("https://jitpack.io") }` without `content { includeGroup(...) }` expands the supply-chain trust boundary to all of JitPack. Always scope to the specific group needed.
 - **Inline `version = "x.y.z"` in version catalog** — duplicates the version with the `[versions]` section. Always use `version.ref`.
+- **Assuming `/sync` v2 availability** — matrix-rust-sdk FFI only exposes Sliding Sync via `SyncService`. Do not attempt to call `Client.sync()` or use traditional sync endpoints.
+- **Custom event fields via typed SDK API** — `TextMessageContent` strips custom JSON fields during Rust→Kotlin conversion. Use `Room.sendRaw()` for sending custom fields and body-prefix convention for receiving.
+- **Missing ProGuard rules for JNA/UniFFI** — release builds crash without keep rules for `net.java.dev.jna.**`, `org.matrix.rustcomponents.sdk.**`, `uniffi.**`. The SDK's `consumer-rules.pro` is empty.
+- **Deleting `sessionPaths` SQLite store** — the store persists E2EE keys (Olm sessions, Megolm keys). Deleting it loses all encryption state and requires full session reset.

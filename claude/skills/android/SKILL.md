@@ -250,8 +250,11 @@ mautrix is a **server-side framework only** — there is no mautrix Android SDK.
 
 ### ClientBuilder and Login
 
+All SDK calls marked `suspend` must run in a coroutine scope (e.g. `withContext(Dispatchers.IO) { ... }`).
+
 ```kotlin
 import org.matrix.rustcomponents.sdk.*
+import java.io.File
 
 val dataDir = File(context.filesDir, "matrix-data").apply { mkdirs() }
 val cacheDir = File(context.cacheDir, "matrix-cache").apply { mkdirs() }
@@ -279,7 +282,7 @@ val client = ClientBuilder()
     .sessionPaths(dataDir.absolutePath, cacheDir.absolutePath)
     .build()
 
-client.restoreSession(savedSession)  // suspend
+client.restoreSession(savedSession)  // suspend — run in coroutine scope
 ```
 
 Store `Session` fields in `EncryptedSharedPreferences` / Android Keystore (see Keystore section below). The SQLite store at `sessionPaths` persists E2EE keys — do NOT delete it between restarts.

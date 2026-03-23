@@ -280,9 +280,9 @@ val client = ClientBuilder()
     .homeserverUrl(savedHomeserverUrl)
     .slidingSyncVersionBuilder(SlidingSyncVersionBuilder.DISCOVER_NATIVE)
     .sessionPaths(dataDir.absolutePath, cacheDir.absolutePath)
-    .build()
+    .build()  // suspend
 
-client.restoreSession(savedSession)  // suspend — run in coroutine scope
+client.restoreSession(savedSession)  // suspend
 ```
 
 Store `Session` fields in `EncryptedSharedPreferences` / Android Keystore (see Keystore section below). The SQLite store at `sessionPaths` persists E2EE keys — do NOT delete it between restarts.

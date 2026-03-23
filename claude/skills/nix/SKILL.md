@@ -208,7 +208,7 @@ This ensures CI uses the exact same SDK and JDK versions as local development.
 Keep SDK versions consistent across all files:
 - `buildToolsVersions` / `platformVersions` in `flake.nix` and `devenv.nix`
 - `compileSdk` / `targetSdk` in `app/build.gradle.kts`
-- See the Android skill for Gradle-side configuration
+- See the [Android skill](../android/SKILL.md) for Gradle-side configuration
 
 ## Security
 

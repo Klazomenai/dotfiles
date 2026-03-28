@@ -12,7 +12,7 @@ description: Git and GitHub workflow guidance, including commits, branches, PRs,
 - Signed commits required: always use `--gpg-sign`
 - Use `Refs #N` in commit body — NEVER `Closes #N`, `Fixes #N`, or `Resolves #N` (closing is a merge-time decision)
 - NO Claude co-author line on private repos — check repo visibility with `gh repo view --json isPrivate -q '.isPrivate'` before committing
-- Lean workflow: `git commit --amend --no-edit && git push --force-with-lease`
+- NEVER amend commits or force-push — stack separate signed commits, squash on merge
 - Commit emoji prefixes (in commit message, not branch): ✨ feat | 🐛 fix | 📝 docs | ♻️ refactor | 🧪 test | ⚙️ chore | 🔐 security | 🏗️ ci | ⚡ perf
 
 ## Branch Conventions
@@ -21,7 +21,7 @@ description: Git and GitHub workflow guidance, including commits, branches, PRs,
 - NEVER create "master" branch
 - Naming: `<type>/<issue>-<description>` e.g. `feat/595-jaeger-tracing`, `fix/784-terraform-exit-code`
 - Types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `security`, `spike`
-- Base branch: main | Merge style: merge commit | Delete branch after merge
+- Base branch: main | Merge style: squash merge | Delete branch after merge
 - No emojis in branch names
 
 ## PR Workflow
@@ -63,13 +63,15 @@ When handling Copilot PR review comments, follow this process:
 3. **User decides** — wait for explicit confirmation on which comments to address
 4. **Fix locally** — make the code changes
 5. **Test locally before pushing** — run changed code from working tree (e.g. `bash -n`, `bash -x` with timeout). Reduce pipeline waste.
-6. **Commit and push** — amend-push to same branch
+6. **Commit and push** — new commit on same branch (never amend)
 7. **Reply inline** — write body to temp file, then `gh api repos/{owner}/{repo}/pulls/{pr}/comments -X POST -F "body=@$tmpfile" -F in_reply_to=<id>`, reference commit SHA
 
 Rules:
 - Push back on wrong suggestions with technical reasoning — not every comment is correct
 - Reply to EVERY top-level comment, even when disagreeing
 - Reference the fix commit SHA in replies where changes were made
+
+> **Why stack, not amend**: squash merge collapses all commits at merge time. Amending rewrites history reviewers already inspected, and force-push triggers guardrail hooks — for zero benefit.
 
 ## PR Review Replies
 
@@ -106,4 +108,6 @@ CRITICAL — applies to ALL public-facing text in public repositories:
 - Creating non-draft PRs
 - Committing secrets or credentials
 - Using `gh repo create --push` (pushes to main)
+- Amending commits during PR review (`--amend`) — stack new signed commits; squash merge makes amend pointless
+- Force-pushing (`--force`, `--force-with-lease`) — breaks reviewer context, blocked by guardrail hooks
 - Emojis in branch names or code

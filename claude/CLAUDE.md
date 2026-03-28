@@ -16,7 +16,8 @@ IMPORTANT: These rules are NON-NEGOTIABLE.
 - Signed commits (`--gpg-sign`) required
 - Branch naming: `<type>/<issue>-<description>`
 - Branch types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `security`, `spike`
-- Base branch: main | Merge style: merge commit | Delete branch after merge
+- NEVER amend commits or force-push — stack separate signed commits, squash on merge
+- Base branch: main | Merge style: squash merge | Delete branch after merge
 - Use `Refs #N` in commits — NEVER `Closes #N` (closing is a merge-time decision)
 
 ## PR Workflow

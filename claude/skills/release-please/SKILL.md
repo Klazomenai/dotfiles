@@ -96,7 +96,7 @@ The first prerelease from a stable version appends the type **without** a number
 0.1.0-alpha.1 + fix: → 0.1.0-alpha.2
 ```
 
-The bump regex `/(?<number>\d+)(?=\D*$)/` finds the last digits in the suffix:
+The bump logic finds the last number in the prerelease suffix and increments it:
 - `alpha` — no digits → appends `.1`
 - `alpha.1` — finds `1` → increments to `alpha.2`
 

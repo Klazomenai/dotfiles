@@ -56,7 +56,7 @@ versionName = "0.1.0" // x-release-please-version
 ```
 
 Config:
-```json
+```jsonc
 "extra-files": [
   {
     "type": "generic",
@@ -136,7 +136,7 @@ for features, making `feat:` produce patch bumps (`0.0.2-alpha` instead of `0.1.
 
 ### Title Pattern
 
-```json
+```jsonc
 "pull-request-title-pattern": "chore${scope}: release${component} ${version} 🗺️"
 ```
 
@@ -147,7 +147,7 @@ Available variables: `${scope}` (branch name in parens), `${component}` (package
 
 Static strings — no variable interpolation available:
 
-```json
+```jsonc
 "pull-request-header": "🏴‍☠️ All hands on deck! New cargo manifest ready for inspection",
 "pull-request-footer": "🏴‍☠️ Logged by the [Quartermaster](../../.github/workflows/RELEASE-PLEASE.md). All hands review before we set sail."
 ```
@@ -158,7 +158,7 @@ to repo-local documentation (e.g., a `RELEASE-PLEASE.md` in the repo's workflows
 
 ### Changelog Sections
 
-```json
+```jsonc
 "changelog-sections": [
   {"type": "feat", "section": "⛵ New Rigging", "hidden": false},
   {"type": "fix", "section": "🔧 Hull Repairs", "hidden": false},
@@ -178,7 +178,7 @@ Hidden sections are parsed (affect version bumps) but excluded from the changelo
 
 ### Labels
 
-```json
+```jsonc
 "label": "release:pending",
 "release-label": "release:published"
 ```

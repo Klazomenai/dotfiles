@@ -188,30 +188,36 @@ Hidden sections are parsed (affect version bumps) but excluded from the changelo
 ### Docker (Go/Python Services)
 
 Two-job workflow: release-please creates the release, then a conditional Docker job builds
-and pushes. Tag `latest` only for stable releases:
+and pushes. Compute tags once and push in a single build to avoid duplicate work. Tag
+`latest` only for stable releases:
 
 ```yaml
 docker:
   needs: release-please
   if: ${{ needs.release-please.outputs.release_created }}
   steps:
+    - name: Compute Docker tags
+      id: docker-tags
+      run: |
+        TAGS="ghcr.io/org/repo:${{ needs.release-please.outputs.version }}"
+        if [[ "${{ needs.release-please.outputs.version }}" != *alpha* && \
+              "${{ needs.release-please.outputs.version }}" != *beta* && \
+              "${{ needs.release-please.outputs.version }}" != *rc* ]]; then
+          TAGS="$TAGS,ghcr.io/org/repo:latest"
+        fi
+        echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+
     - uses: docker/build-push-action@v6
       with:
         push: true
-        tags: ghcr.io/org/repo:${{ needs.release-please.outputs.version }}
-
-    - name: Push latest (stable only)
-      if: ${{ !contains(needs.release-please.outputs.version, 'alpha') && !contains(needs.release-please.outputs.version, 'beta') && !contains(needs.release-please.outputs.version, 'rc') }}
-      uses: docker/build-push-action@v6
-      with:
-        push: true
-        tags: ghcr.io/org/repo:latest
+        tags: ${{ steps.docker-tags.outputs.tags }}
 ```
 
 ### APK (Android)
 
 Use `gh release upload` to attach the APK directly as a release asset. Do NOT use
-`actions/upload-artifact` — it wraps files in a zip that Android cannot extract:
+`actions/upload-artifact` — it wraps files in a zip and does not publish them as a
+first-class release asset, making them less accessible for end users (especially on mobile):
 
 ```yaml
 build-apk:
@@ -252,21 +258,23 @@ with: `GitHub Actions is not permitted to create or approve pull requests`.
 
 - **`"versioning-strategy"` instead of `"versioning"`** — silently ignored. release-please
   falls back to the default versioning strategy (simple patch bumps, no prerelease suffix).
-  The correct field is `"versioning"`. Confirmed: `schemas/config.json` line 27, read at
-  `src/manifest.ts` line 1394.
+  The correct field is `"versioning"`. Confirmed in the release-please JSON schema
+  (`schemas/config.json`) and manifest config reader (`src/manifest.ts`).
 
 - **`"bump-patch-for-minor-pre-major": true`** — makes `feat:` commits produce **patch**
   bumps instead of minor bumps while the major version is 0. This overrides
   `bump-minor-pre-major` for features. Remove it unless you explicitly want features to
-  produce patch bumps pre-1.0. Confirmed: `src/versioning-strategies/prerelease.ts` line 225.
+  produce patch bumps pre-1.0. Confirmed in the prerelease versioning strategy
+  (`src/versioning-strategies/prerelease.ts`).
 
 - **Expecting `alpha.0` as first prerelease** — the native sequence starts at `alpha`
   (no `.0`), then `alpha.1`, `alpha.2`. Repos that show `alpha.0` were manually seeded
   with that value in the manifest.
 
-- **Using `actions/upload-artifact` for mobile APKs** — wraps files in a zip archive.
-  Android phones cannot extract zips from the browser. Use `gh release upload` to attach
-  the `.apk` directly as a GitHub Release asset.
+- **Using `actions/upload-artifact` for mobile APKs** — wraps files in a zip and does not
+  publish them as a first-class release asset, making them less accessible for end users
+  (especially on mobile). Use `gh release upload` to attach the `.apk` directly as a
+  GitHub Release asset.
 
 - **Missing `permissions: pull-requests: write`** — release-please cannot create the
   release PR without this permission in the workflow file.

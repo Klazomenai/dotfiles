@@ -152,7 +152,9 @@ Static strings — no variable interpolation available:
 "pull-request-footer": "🏴‍☠️ Logged by the [Quartermaster](../../.github/workflows/RELEASE-PLEASE.md). All hands review before we set sail."
 ```
 
-Use relative links in the footer to point to repo-local documentation.
+The relative link above is an example for use in a **target repo's** config — it resolves
+relative to the release PR, not this skill file. Use relative links in the footer to point
+to repo-local documentation (e.g., a `RELEASE-PLEASE.md` in the repo's workflows directory).
 
 ### Changelog Sections
 
@@ -199,7 +201,7 @@ docker:
         tags: ghcr.io/org/repo:${{ needs.release-please.outputs.version }}
 
     - name: Push latest (stable only)
-      if: ${{ !contains(needs.release-please.outputs.version, 'alpha') && !contains(needs.release-please.outputs.version, 'beta') }}
+      if: ${{ !contains(needs.release-please.outputs.version, 'alpha') && !contains(needs.release-please.outputs.version, 'beta') && !contains(needs.release-please.outputs.version, 'rc') }}
       uses: docker/build-push-action@v6
       with:
         push: true
@@ -224,7 +226,7 @@ build-apk:
     - name: Attach APK to release
       run: |
         gh release upload ${{ needs.release-please.outputs.tag_name }} \
-          app-release.apk --clobber
+          app/build/outputs/apk/release/app-release.apk --clobber
 ```
 
 ### Workflow Permissions

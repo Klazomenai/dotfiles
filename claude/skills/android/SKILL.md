@@ -782,11 +782,21 @@ class OnboardingActivity : AppCompatActivity() {
     // Register at class level — NEVER inside onClick or other callbacks
     private val requestAudioPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { granted -> updatePermissionStatus() }
+    ) { granted ->
+        updatePermissionStatus()
+        if (!granted) {
+            handlePermanentDenial(Manifest.permission.RECORD_AUDIO)
+        }
+    }
 
     private val requestBluetoothPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { granted -> updatePermissionStatus() }
+    ) { granted ->
+        updatePermissionStatus()
+        if (!granted) {
+            handlePermanentDenial(Manifest.permission.BLUETOOTH_CONNECT)
+        }
+    }
 ```
 
 ### Requesting Permissions

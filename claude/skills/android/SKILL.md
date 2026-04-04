@@ -757,14 +757,14 @@ private fun validateAndLogin() {
             withContext(Dispatchers.IO) {
                 client.login(url, username, password)
             }
-            loginProgress.visibility = View.GONE
             advanceStep()
         } catch (e: CancellationException) {
             throw e  // never swallow — breaks structured concurrency
         } catch (e: Exception) {
-            loginProgress.visibility = View.GONE
             loginError.text = e.message ?: "Login failed"
             loginError.visibility = View.VISIBLE
+        } finally {
+            loginProgress.visibility = View.GONE
             btnNext.isEnabled = true
         }
     }
@@ -831,17 +831,25 @@ private fun updatePermissionStatus() {
 
 ### Detecting Permanent Denial
 
-`shouldShowRequestPermissionRationale()` returns `false` in three cases: (a) before the first request, (b) after the user selects "Don't ask again", (c) when already granted. Only treat it as permanent denial if the permission is currently denied **and** has been requested at least once:
+`shouldShowRequestPermissionRationale()` returns `false` in three cases: (a) before the first request, (b) after the user selects "Don't ask again", (c) when already granted. Only treat it as permanent denial if the permission is currently denied **and** has been requested at least once. Persist a flag when launching the request so the check survives process death:
 
 ```kotlin
+// Set flag before launching — persists across process death
+prefs.edit().putBoolean("${permission}_requested", true).apply()
+requestPermissionLauncher.launch(permission)
+
+// Later, when checking denial state:
+val wasRequested = prefs.getBoolean("${permission}_requested", false)
 val permissionDenied = ContextCompat.checkSelfPermission(
     this, permission,
 ) != PackageManager.PERMISSION_GRANTED
 
 if (permissionDenied &&
+    wasRequested &&
     !ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
 ) {
-    // Permission denied and no rationale available — direct user to app Settings
+    // Permission denied after at least one request and no rationale available —
+    // direct user to app Settings
     startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
         data = Uri.fromParts("package", packageName, null)
     })

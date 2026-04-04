@@ -299,9 +299,8 @@ val syncService = client.syncService().finish()
 syncService.start()  // suspend — begins background sync
 
 // IMPORTANT: getRoom() returns null until Sliding Sync delivers the room.
-// Wait for RoomListServiceState.RUNNING or use retry with backoff.
-// See "Sliding Sync Readiness" section below.
-val room = client.getRoom(roomId) ?: error("Room not found")
+// Use retry with backoff — see "Sliding Sync Readiness" section below.
+val room = awaitRoom(client, roomId)
 val timeline = room.timeline()  // suspend
 
 val handle = timeline.addListener(object : TimelineListener {
@@ -368,7 +367,7 @@ suspend fun awaitRoom(client: Client, roomId: String): Room {
         val room = client.getRoom(roomId)
         if (room != null) return room
         if (attempt < delays.lastIndex) {
-            Log.d(TAG, "Room not yet available, retrying in ${delays[attempt]}ms")
+            // Log retry attempts so the user sees progress
             delay(delays[attempt])
         }
     }

@@ -152,13 +152,14 @@ class SherpaOnnxSttEngine(private val context: Context) : SttEngine {
     private val recognizer: OfflineRecognizer
         get() = recognizerInstance ?: createRecognizer().also { recognizerInstance = it }
 
-    // Copy ONNX models from assets/ to filesDir/ (JNI needs file-system paths).
+    // Copy ONNX models + tokens from assets/ to filesDir/ (JNI needs file-system paths).
     // Check for specific files (not just non-empty dir) to detect partial copies.
     private fun copyAssetsToDisk(): File {
         val destDir = File(context.filesDir, "stt")
         val encoderOk = File(destDir, "tiny.en-encoder.int8.onnx").let { it.exists() && it.length() > 0 }
         val decoderOk = File(destDir, "tiny.en-decoder.int8.onnx").let { it.exists() && it.length() > 0 }
-        if (destDir.exists() && encoderOk && decoderOk) return destDir
+        val tokensOk = File(destDir, "tiny.en-tokens.txt").let { it.exists() && it.length() > 0 }
+        if (destDir.exists() && encoderOk && decoderOk && tokensOk) return destDir
         destDir.mkdirs()
         context.assets.list("stt")?.forEach { name ->
             context.assets.open("stt/$name").use { src ->
@@ -297,7 +298,9 @@ Store `Session` fields in `EncryptedSharedPreferences` / Android Keystore (see K
 val syncService = client.syncService().finish()
 syncService.start()  // suspend — begins background sync
 
-// Listen to a room's timeline
+// IMPORTANT: getRoom() returns null until Sliding Sync delivers the room.
+// Wait for RoomListServiceState.RUNNING or use retry with backoff.
+// See "Sliding Sync Readiness" section below.
 val room = client.getRoom(roomId) ?: error("Room not found")
 val timeline = room.timeline()  // suspend
 
@@ -354,20 +357,26 @@ val stateHandle = roomListService.state(object : RoomListServiceStateListener {
 
 **Pragmatic alternative — retry with backoff:**
 
-When the interface contract doesn't support async readiness (e.g. existing `MatrixClient` abstraction), retry `getRoom()` with exponential backoff:
+When the interface contract doesn't support async readiness (e.g. existing `MatrixClient` abstraction), retry `getRoom()` with exponential backoff. Must run in a coroutine context (`delay` is a suspend function):
 
 ```kotlin
-var room: Room? = null
-val delays = longArrayOf(100, 200, 500, 1000, 2000, 5000)
-for (attempt in delays.indices) {
-    room = client.getRoom(roomId)
-    if (room != null) break
-    if (attempt < delays.lastIndex) delay(delays[attempt])
+import kotlinx.coroutines.delay
+
+suspend fun awaitRoom(client: Client, roomId: String): Room {
+    val delays = longArrayOf(100, 200, 500, 1000, 2000, 5000)
+    for (attempt in delays.indices) {
+        val room = client.getRoom(roomId)
+        if (room != null) return room
+        if (attempt < delays.lastIndex) {
+            Log.d(TAG, "Room not yet available, retrying in ${delays[attempt]}ms")
+            delay(delays[attempt])
+        }
+    }
+    throw IllegalArgumentException("Room not found after ${delays.size} attempts: $roomId")
 }
-if (room == null) throw IllegalArgumentException("Room not found after retries: $roomId")
 ```
 
-Total max wait: ~8.8 seconds. Typically succeeds on first or second attempt (~100-300ms). Log each retry so the user sees progress.
+Total max wait: ~3.8 seconds (100+200+500+1000+2000; final attempt has no delay). Typically succeeds on first or second attempt (~100-300ms). Log each retry so the user sees progress.
 
 ### Message Extraction
 

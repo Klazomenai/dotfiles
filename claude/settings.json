@@ -10,7 +10,9 @@
       "Bash(git push * --force)",
       "Bash(git reset --hard *)",
       "Bash(git checkout -- .)",
-      "Bash(git clean -f *)"
+      "Bash(git clean -f *)",
+      "Bash(git rebase)",
+      "Bash(git rebase *)"
     ]
   },
   "hooks": {
@@ -52,6 +54,11 @@
             "type": "command",
             "command": "~/.claude/hooks/helm-version-required.sh",
             "statusMessage": "Checking helm version pinning"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/no-rebase.sh",
+            "statusMessage": "Checking for git rebase"
           }
         ]
       }
@@ -61,7 +68,7 @@
         "hooks": [
           {
             "type": "prompt",
-            "prompt": "Check if the assistant just created or modified a pull request. If so, verify: (1) It was created as a DRAFT PR (--draft flag), (2) The assistant did NOT suggest merging or mark it ready, (3) The assistant's final message tells the user the PR URL and stops — it does NOT suggest next steps about merging. If any of these are violated, return {\"ok\": false, \"reason\": \"PR must be draft. Never suggest merging. Stop after providing PR URL.\"}. $ARGUMENTS",
+            "prompt": "Check ONLY the assistant's most recent response (the single message immediately above this check). If that specific response created or modified a pull request, verify: (1) It used the --draft flag, (2) It did NOT suggest merging or mark it ready, (3) It ends with the PR URL and nothing else — no trailing commentary, status updates, or next steps. If the most recent response did NOT create or modify a PR, return ok. Only evaluate the single most recent assistant message. $ARGUMENTS",
             "timeout": 15
           }
         ]

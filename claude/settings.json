@@ -11,6 +11,7 @@
       "Bash(git reset --hard *)",
       "Bash(git checkout -- .)",
       "Bash(git clean -f *)",
+      "Bash(git rebase)",
       "Bash(git rebase *)"
     ]
   },

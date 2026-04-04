@@ -4,7 +4,8 @@ description: >-
   Android/Kotlin development — Gradle Kotlin DSL, JNI/AAR native library
   integration (Sherpa-ONNX for ASR and TTS with piper ONNX models), matrix-rust-sdk
   Kotlin bindings (Sliding Sync, E2EE, session persistence), Android Keystore
-  credential storage, Bluetooth headset audio, and F-Droid reproducible build
+  credential storage, Bluetooth headset audio, onboarding wizard patterns,
+  ActivityResultContracts runtime permissions, and F-Droid reproducible build
   requirements. Use when writing Android/Kotlin code, reviewing Android PRs,
   or configuring Gradle/JNI tooling.
 ---
@@ -655,6 +656,192 @@ jobs:
 
 Unit tests run on the JVM and must not invoke JNI — mock all native engines via the interface pattern above. Instrumented tests (`androidTest`) require a device or emulator and run separately.
 
+## Onboarding / Wizard Patterns
+
+For apps without Fragments (e.g. single-Activity architectures), a view-swapping step wizard is simpler than ViewPager2/NavGraph. Single Activity with `FrameLayout` containing `<include>` layouts, toggled via `View.VISIBLE`/`View.GONE`:
+
+```kotlin
+class OnboardingActivity : AppCompatActivity() {
+    private var currentStep = 0
+    private lateinit var stepViews: List<View>
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_onboarding)
+
+        stepViews = listOf(
+            findViewById(R.id.step_login),
+            findViewById(R.id.step_voice),
+            findViewById(R.id.step_permissions),
+        )
+
+        // Restore step across config changes (rotation, etc.)
+        if (savedInstanceState != null) {
+            currentStep = savedInstanceState.getInt(KEY_CURRENT_STEP, 0)
+        }
+        showStep(currentStep)
+
+        // Modern back navigation — replaces deprecated onBackPressed()
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (currentStep > 0) { currentStep--; showStep(currentStep) }
+                else finish()
+            }
+        })
+
+        findViewById<Button>(R.id.btn_next).setOnClickListener { goNext() }
+    }
+
+    private fun showStep(step: Int) {
+        stepViews.forEachIndexed { i, view ->
+            view.visibility = if (i == step) View.VISIBLE else View.GONE
+        }
+        // Update step indicator, back button visibility, next button text
+        findViewById<Button>(R.id.btn_next).text =
+            if (step == stepViews.lastIndex) "Finish" else "Next"
+    }
+
+    private fun goNext() {
+        when (currentStep) {
+            STEP_LOGIN -> validateAndLogin()       // per-step validation
+            STEP_VOICE -> advanceStep()
+            STEP_PERMISSIONS -> advanceStep()
+        }
+    }
+
+    private fun advanceStep() {
+        if (currentStep < stepViews.lastIndex) {
+            currentStep++
+            showStep(currentStep)
+        } else {
+            setResult(RESULT_OK)
+            finish()
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(KEY_CURRENT_STEP, currentStep)
+    }
+
+    companion object {
+        private const val KEY_CURRENT_STEP = "current_step"
+        private const val STEP_LOGIN = 0
+        private const val STEP_VOICE = 1
+        private const val STEP_PERMISSIONS = 2
+    }
+}
+```
+
+### Coroutine Login with Inline Progress/Error
+
+Validate inputs before launching the coroutine. Disable the submit button and show a `ProgressBar` during the network call. Re-throw `CancellationException` — swallowing it breaks structured concurrency:
+
+```kotlin
+private fun validateAndLogin() {
+    val url = homeserverInput.text.toString().trim()
+    val username = usernameInput.text.toString().trim()
+    val password = passwordInput.text.toString().trim()
+
+    if (url.isEmpty()) { homeserverInput.error = "Required"; return }
+    if (!url.startsWith("https://")) { homeserverInput.error = "Must start with https://"; return }
+    if (username.isEmpty()) { usernameInput.error = "Required"; return }
+    if (password.isEmpty()) { passwordInput.error = "Required"; return }
+
+    loginProgress.visibility = View.VISIBLE
+    loginError.visibility = View.GONE
+    btnNext.isEnabled = false
+
+    lifecycleScope.launch {
+        try {
+            withContext(Dispatchers.IO) {
+                client.login(url, username, password)
+            }
+            loginProgress.visibility = View.GONE
+            advanceStep()
+        } catch (e: CancellationException) {
+            throw e  // never swallow — breaks structured concurrency
+        } catch (e: Exception) {
+            loginProgress.visibility = View.GONE
+            loginError.text = e.message ?: "Login failed"
+            loginError.visibility = View.VISIBLE
+            btnNext.isEnabled = true
+        }
+    }
+}
+```
+
+## Runtime Permissions (ActivityResultContracts)
+
+The modern permission API (`registerForActivityResult`) replaces the deprecated `onRequestPermissionsResult` callback. Launchers **must** be registered at class member level — registration during `STARTED` or later throws `IllegalStateException`.
+
+```kotlin
+class OnboardingActivity : AppCompatActivity() {
+    // Register at class level — NEVER inside onClick or other callbacks
+    private val requestAudioPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> updatePermissionStatus() }
+
+    private val requestBluetoothPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> updatePermissionStatus() }
+```
+
+### Requesting Permissions
+
+```kotlin
+// Audio — all API levels
+btnGrantAudio.setOnClickListener {
+    requestAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
+}
+
+// Bluetooth — API 31+ only (BLUETOOTH_CONNECT is a new runtime permission)
+if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    btnGrantBluetooth.setOnClickListener {
+        requestBluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+    }
+} else {
+    // Pre-Android 12: BLUETOOTH_CONNECT doesn't exist; legacy permissions
+    // are install-time only (declared in manifest with maxSdkVersion="30")
+    btnGrantBluetooth.isEnabled = false
+    bluetoothStatus.text = "Granted (pre-Android 12)"
+}
+```
+
+### Checking Permission State
+
+```kotlin
+private fun updatePermissionStatus() {
+    val audioGranted = ContextCompat.checkSelfPermission(
+        this, Manifest.permission.RECORD_AUDIO,
+    ) == PackageManager.PERMISSION_GRANTED
+
+    audioStatus.text = if (audioGranted) "Granted" else "Not granted"
+    btnGrantAudio.isEnabled = !audioGranted
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val btGranted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.BLUETOOTH_CONNECT,
+        ) == PackageManager.PERMISSION_GRANTED
+        bluetoothStatus.text = if (btGranted) "Granted" else "Not granted"
+        btnGrantBluetooth.isEnabled = !btGranted
+    }
+}
+```
+
+### Detecting Permanent Denial
+
+After the user denies a permission twice, `shouldShowRequestPermissionRationale()` returns `false`. At that point, launching the permission request again silently returns denied — direct the user to Settings instead.
+
+```kotlin
+if (!ActivityCompat.shouldShowRequestPermissionRationale(this, permission)) {
+    // Permission permanently denied — show dialog pointing to app Settings
+    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+        data = Uri.fromParts("package", packageName, null)
+    })
+}
+```
+
 ## Anti-patterns
 
 - **Google Play Services dependency** — any `com.google.android.gms` transitive dep blocks F-Droid distribution. Audit with `./gradlew dependencies`.
@@ -674,3 +861,4 @@ Unit tests run on the JVM and must not invoke JNI — mock all native engines vi
 - **Deleting `sessionPaths` SQLite store** — the store persists E2EE keys (Olm sessions, Megolm keys). Deleting it loses all encryption state and requires full session reset.
 - **Calling `getRoom()` before Sliding Sync delivers rooms** — returns null immediately after `login()` or `restoreSession()`. Wait for `RoomListServiceState.RUNNING` or use retry with backoff. See "Sliding Sync Readiness" section.
 - **Missing Whisper tokens file** — `OfflineModelConfig.tokens` must point to `tiny.en-tokens.txt`. Without it, `OfflineRecognizer` native constructor returns null (0) and `createStream()` dereferences it → SIGSEGV. Validation fails silently at `offline-model-config.cc:101-106`.
+- **Registering `ActivityResultContracts` inside callbacks** — `registerForActivityResult()` must be called during Activity/Fragment initialization (before `STARTED` state). Calling it inside `onClick`, `onResume`, or any post-init callback throws `IllegalStateException`. Always register launchers as class members.

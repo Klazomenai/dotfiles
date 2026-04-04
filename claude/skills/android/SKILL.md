@@ -804,7 +804,7 @@ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
     // Pre-Android 12: BLUETOOTH_CONNECT doesn't exist; legacy permissions
     // are install-time only (declared in manifest with maxSdkVersion="30")
     btnGrantBluetooth.isEnabled = false
-    bluetoothStatus.text = "Granted (pre-Android 12)"
+    bluetoothStatus.text = "Not required (API < 31)"
 }
 ```
 
@@ -831,11 +831,17 @@ private fun updatePermissionStatus() {
 
 ### Detecting Permanent Denial
 
-After the user denies a permission twice, `shouldShowRequestPermissionRationale()` returns `false`. At that point, launching the permission request again silently returns denied — direct the user to Settings instead.
+`shouldShowRequestPermissionRationale()` returns `false` in three cases: (a) before the first request, (b) after the user selects "Don't ask again", (c) when already granted. Only treat it as permanent denial if the permission is currently denied **and** has been requested at least once:
 
 ```kotlin
-if (!ActivityCompat.shouldShowRequestPermissionRationale(this, permission)) {
-    // Permission permanently denied — show dialog pointing to app Settings
+val permissionDenied = ContextCompat.checkSelfPermission(
+    this, permission,
+) != PackageManager.PERMISSION_GRANTED
+
+if (permissionDenied &&
+    !ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
+) {
+    // Permission denied and no rationale available — direct user to app Settings
     startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
         data = Uri.fromParts("package", packageName, null)
     })

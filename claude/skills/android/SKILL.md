@@ -863,7 +863,7 @@ private fun launchPermissionRequest(
     launcher: ActivityResultLauncher<String>,
 ) {
     // Set flag before launching — persists across process death
-    prefs.edit().putBoolean("${permission}_requested", true).apply()
+    prefs.edit().putBoolean("${permission}_requested", true).commit()
     launcher.launch(permission)
 }
 

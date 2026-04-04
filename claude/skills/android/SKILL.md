@@ -152,13 +152,14 @@ class SherpaOnnxSttEngine(private val context: Context) : SttEngine {
     private val recognizer: OfflineRecognizer
         get() = recognizerInstance ?: createRecognizer().also { recognizerInstance = it }
 
-    // Copy ONNX models from assets/ to filesDir/ (JNI needs file-system paths).
+    // Copy ONNX models + tokens from assets/ to filesDir/ (JNI needs file-system paths).
     // Check for specific files (not just non-empty dir) to detect partial copies.
     private fun copyAssetsToDisk(): File {
         val destDir = File(context.filesDir, "stt")
         val encoderOk = File(destDir, "tiny.en-encoder.int8.onnx").let { it.exists() && it.length() > 0 }
         val decoderOk = File(destDir, "tiny.en-decoder.int8.onnx").let { it.exists() && it.length() > 0 }
-        if (destDir.exists() && encoderOk && decoderOk) return destDir
+        val tokensOk = File(destDir, "tiny.en-tokens.txt").let { it.exists() && it.length() > 0 }
+        if (destDir.exists() && encoderOk && decoderOk && tokensOk) return destDir
         destDir.mkdirs()
         context.assets.list("stt")?.forEach { name ->
             context.assets.open("stt/$name").use { src ->
@@ -179,6 +180,9 @@ class SherpaOnnxSttEngine(private val context: Context) : SttEngine {
                     language = "en",
                     task = "transcribe",
                 ),
+                // tokens is REQUIRED — validation fails silently (returns null
+                // pointer) without it, causing SIGSEGV on createStream().
+                tokens = "$sttDir/tiny.en-tokens.txt",
                 numThreads = 2, debug = false, provider = "cpu",
             ),
         )
@@ -294,8 +298,9 @@ Store `Session` fields in `EncryptedSharedPreferences` / Android Keystore (see K
 val syncService = client.syncService().finish()
 syncService.start()  // suspend — begins background sync
 
-// Listen to a room's timeline
-val room = client.getRoom(roomId) ?: error("Room not found")
+// IMPORTANT: getRoom() returns null until Sliding Sync delivers the room.
+// Use retry with backoff — see "Sliding Sync Readiness" section below.
+val room = awaitRoom(client, roomId)
 val timeline = room.timeline()  // suspend
 
 val handle = timeline.addListener(object : TimelineListener {
@@ -315,6 +320,64 @@ val handle = timeline.addListener(object : TimelineListener {
 syncService.stop()
 handle.close()
 ```
+
+### Sliding Sync Readiness
+
+`client.getRoom(roomId)` returns **null before Sliding Sync delivers rooms**. After `login()` or `restoreSession()`, the state store is empty. Rooms are populated asynchronously by the `SyncService` background loop. Calling `getRoom()` immediately after `syncService.start()` is a race condition.
+
+**Callback interfaces for sync state observation:**
+
+| Interface | States | When rooms are available |
+|-----------|--------|------------------------|
+| `SyncServiceStateObserver` | `IDLE`, `RUNNING`, `TERMINATED`, `ERROR`, `OFFLINE` | After `RUNNING` |
+| `RoomListServiceStateListener` | `INITIAL`, `SETTING_UP`, `RECOVERING`, `RUNNING`, `ERROR`, `TERMINATED` | After `RUNNING` |
+| `RoomListLoadingStateListener` | `NotLoaded`, `Loaded(maximumNumberOfRooms)` | After `Loaded` |
+
+**Correct pattern — observe room list state before `getRoom()`:**
+
+```kotlin
+import org.matrix.rustcomponents.sdk.RoomListServiceState
+import org.matrix.rustcomponents.sdk.RoomListServiceStateListener
+
+val syncService = client.syncService().finish()
+syncService.start()
+
+// Observe room list readiness
+val roomListService = syncService.roomListService()
+val stateHandle = roomListService.state(object : RoomListServiceStateListener {
+    override fun onUpdate(state: RoomListServiceState) {
+        if (state == RoomListServiceState.RUNNING) {
+            // Rooms are now available — safe to call getRoom()
+        }
+    }
+})
+// Keep stateHandle alive; call stateHandle.cancel() on cleanup
+```
+
+**Pragmatic alternative — retry with backoff:**
+
+When the interface contract doesn't support async readiness (e.g. existing `MatrixClient` abstraction), retry `getRoom()` with exponential backoff. Must run in a coroutine context (`delay` is a suspend function):
+
+```kotlin
+import kotlinx.coroutines.delay
+import org.matrix.rustcomponents.sdk.Client
+import org.matrix.rustcomponents.sdk.Room
+
+suspend fun awaitRoom(client: Client, roomId: String): Room {
+    val delays = longArrayOf(100, 200, 500, 1000, 2000, 5000)
+    for (attempt in delays.indices) {
+        val room = client.getRoom(roomId)
+        if (room != null) return room
+        if (attempt < delays.lastIndex) {
+            // Log retry attempts so the user sees progress
+            delay(delays[attempt])
+        }
+    }
+    throw IllegalArgumentException("Room not found after ${delays.size} attempts: $roomId")
+}
+```
+
+Total max wait: ~3.8 seconds (100+200+500+1000+2000; final attempt has no delay). Typically succeeds on first or second attempt (~100-300ms). Log each retry so the user sees progress.
 
 ### Message Extraction
 
@@ -357,12 +420,18 @@ Parse with a regex on the receiving side. Proper raw event access is a future im
 The SDK uses JNA for the native bridge. Its `consumer-rules.pro` is empty — add these to the app's `proguard-rules.pro`:
 
 ```
--keep class net.java.dev.jna.** { *; }
+# JNA — transitive dependency of org.matrix.rustcomponents:sdk-android.
+# Package is com.sun.jna (NOT net.java.dev.jna — that's the Maven group ID).
+-keep class com.sun.jna.** { *; }
 -keep class org.matrix.rustcomponents.sdk.** { *; }
 -keep class uniffi.** { *; }
+
+# JNA's Native$AWT references java.awt classes not available on Android.
+# These code paths are never reached (JNA detects Android at runtime).
+-dontwarn java.awt.**
 ```
 
-Also keep any app classes implementing SDK callback interfaces (`TimelineListener`, `SyncServiceStateObserver`, etc.).
+Also keep any app classes implementing SDK callback interfaces (`TimelineListener`, `SyncServiceStateObserver`, `RoomListServiceStateListener`, etc.).
 
 ### JVM Heap for Large SDKs
 
@@ -601,5 +670,7 @@ Unit tests run on the JVM and must not invoke JNI — mock all native engines vi
 - **Inline `version = "x.y.z"` in version catalog** — duplicates the version with the `[versions]` section. Always use `version.ref`.
 - **Assuming `/sync` v2 availability** — matrix-rust-sdk FFI only exposes Sliding Sync via `SyncService`. Do not attempt to call `Client.sync()` or use traditional sync endpoints.
 - **Custom event fields via typed SDK API** — `TextMessageContent` strips custom JSON fields during Rust→Kotlin conversion. Use `Room.sendRaw()` for sending custom fields and body-prefix convention for receiving.
-- **Missing ProGuard rules for JNA/UniFFI** — release builds crash without keep rules for `net.java.dev.jna.**`, `org.matrix.rustcomponents.sdk.**`, `uniffi.**`. The SDK's `consumer-rules.pro` is empty.
+- **Missing ProGuard rules for JNA/UniFFI** — release builds crash without keep rules for `com.sun.jna.**` (NOT `net.java.dev.jna.**` — that's the Maven group ID), `org.matrix.rustcomponents.sdk.**`, `uniffi.**`. Also needs `-dontwarn java.awt.**` for JNA's desktop AWT refs. The SDK's `consumer-rules.pro` is empty.
 - **Deleting `sessionPaths` SQLite store** — the store persists E2EE keys (Olm sessions, Megolm keys). Deleting it loses all encryption state and requires full session reset.
+- **Calling `getRoom()` before Sliding Sync delivers rooms** — returns null immediately after `login()` or `restoreSession()`. Wait for `RoomListServiceState.RUNNING` or use retry with backoff. See "Sliding Sync Readiness" section.
+- **Missing Whisper tokens file** — `OfflineModelConfig.tokens` must point to `tiny.en-tokens.txt`. Without it, `OfflineRecognizer` native constructor returns null (0) and `createStream()` dereferences it → SIGSEGV. Validation fails silently at `offline-model-config.cc:101-106`.

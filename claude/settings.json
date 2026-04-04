@@ -10,7 +10,8 @@
       "Bash(git push * --force)",
       "Bash(git reset --hard *)",
       "Bash(git checkout -- .)",
-      "Bash(git clean -f *)"
+      "Bash(git clean -f *)",
+      "Bash(git rebase *)"
     ]
   },
   "hooks": {
@@ -52,6 +53,11 @@
             "type": "command",
             "command": "~/.claude/hooks/helm-version-required.sh",
             "statusMessage": "Checking helm version pinning"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/no-rebase.sh",
+            "statusMessage": "Checking for git rebase"
           }
         ]
       }

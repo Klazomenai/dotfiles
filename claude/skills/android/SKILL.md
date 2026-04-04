@@ -773,7 +773,7 @@ private fun validateAndLogin() {
 
 ## Runtime Permissions (ActivityResultContracts)
 
-The modern permission API (`registerForActivityResult`) replaces the deprecated `onRequestPermissionsResult` callback. Launchers **must** be registered at class member level — registration during `STARTED` or later throws `IllegalStateException`.
+The modern permission API (`registerForActivityResult`) replaces the deprecated `onRequestPermissionsResult` callback. Register launchers during initialization **before** the `Activity` or `Fragment` reaches `STARTED` (for example, at class level or in `onCreate()`); registering from post-init callbacks such as `onClick`, `onResume`, or any `STARTED`/later state throws `IllegalStateException`.
 
 ```kotlin
 class OnboardingActivity : AppCompatActivity() {
@@ -834,25 +834,35 @@ private fun updatePermissionStatus() {
 `shouldShowRequestPermissionRationale()` returns `false` in three cases: (a) before the first request, (b) after the user selects "Don't ask again", (c) when already granted. Only treat it as permanent denial if the permission is currently denied **and** has been requested at least once. Persist a flag when launching the request so the check survives process death:
 
 ```kotlin
-// Set flag before launching — persists across process death
-prefs.edit().putBoolean("${permission}_requested", true).apply()
-requestPermissionLauncher.launch(permission)
+private val prefs by lazy {
+    getSharedPreferences("permissions", MODE_PRIVATE)
+}
 
-// Later, when checking denial state:
-val wasRequested = prefs.getBoolean("${permission}_requested", false)
-val permissionDenied = ContextCompat.checkSelfPermission(
-    this, permission,
-) != PackageManager.PERMISSION_GRANTED
-
-if (permissionDenied &&
-    wasRequested &&
-    !ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
+private fun launchPermissionRequest(
+    permission: String,
+    launcher: ActivityResultLauncher<String>,
 ) {
-    // Permission denied after at least one request and no rationale available —
-    // direct user to app Settings
-    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-        data = Uri.fromParts("package", packageName, null)
-    })
+    // Set flag before launching — persists across process death
+    prefs.edit().putBoolean("${permission}_requested", true).apply()
+    launcher.launch(permission)
+}
+
+private fun handlePermanentDenial(permission: String) {
+    val wasRequested = prefs.getBoolean("${permission}_requested", false)
+    val permissionDenied = ContextCompat.checkSelfPermission(
+        this, permission,
+    ) != PackageManager.PERMISSION_GRANTED
+
+    if (permissionDenied &&
+        wasRequested &&
+        !ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
+    ) {
+        // Permission denied after at least one request and no rationale available —
+        // direct user to app Settings
+        startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", packageName, null)
+        })
+    }
 }
 ```
 
@@ -875,4 +885,4 @@ if (permissionDenied &&
 - **Deleting `sessionPaths` SQLite store** — the store persists E2EE keys (Olm sessions, Megolm keys). Deleting it loses all encryption state and requires full session reset.
 - **Calling `getRoom()` before Sliding Sync delivers rooms** — returns null immediately after `login()` or `restoreSession()`. Wait for `RoomListServiceState.RUNNING` or use retry with backoff. See "Sliding Sync Readiness" section.
 - **Missing Whisper tokens file** — `OfflineModelConfig.tokens` must point to `tiny.en-tokens.txt`. Without it, `OfflineRecognizer` native constructor returns null (0) and `createStream()` dereferences it → SIGSEGV. Validation fails silently at `offline-model-config.cc:101-106`.
-- **Registering `ActivityResultContracts` inside callbacks** — `registerForActivityResult()` must be called during Activity/Fragment initialization (before `STARTED` state). Calling it inside `onClick`, `onResume`, or any post-init callback throws `IllegalStateException`. Always register launchers as class members.
+- **Registering `ActivityResultContracts` inside callbacks** — `registerForActivityResult()` must be called during Activity/Fragment initialization (before `STARTED` state). Calling it inside `onClick`, `onResume`, or any other post-init callback throws `IllegalStateException`. Register launchers during initialization, either as class members/properties or early in `onCreate()`.

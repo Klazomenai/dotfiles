@@ -677,7 +677,9 @@ class OnboardingActivity : AppCompatActivity() {
 
         // Restore step across config changes (rotation, etc.)
         if (savedInstanceState != null) {
-            currentStep = savedInstanceState.getInt(KEY_CURRENT_STEP, 0)
+            currentStep = savedInstanceState
+                .getInt(KEY_CURRENT_STEP, 0)
+                .coerceIn(0, stepViews.lastIndex)
         }
         showStep(currentStep)
 
@@ -789,16 +791,24 @@ class OnboardingActivity : AppCompatActivity() {
 
 ### Requesting Permissions
 
+Use the `launchPermissionRequest()` helper (defined in "Detecting Permanent Denial" below) so the `wasPermissionRequested` flag is set before every launch:
+
 ```kotlin
 // Audio — all API levels
 btnGrantAudio.setOnClickListener {
-    requestAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
+    launchPermissionRequest(
+        Manifest.permission.RECORD_AUDIO,
+        requestAudioPermission,
+    )
 }
 
 // Bluetooth — API 31+ only (BLUETOOTH_CONNECT is a new runtime permission)
 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
     btnGrantBluetooth.setOnClickListener {
-        requestBluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        launchPermissionRequest(
+            Manifest.permission.BLUETOOTH_CONNECT,
+            requestBluetoothPermission,
+        )
     }
 } else {
     // Pre-Android 12: BLUETOOTH_CONNECT doesn't exist; legacy permissions

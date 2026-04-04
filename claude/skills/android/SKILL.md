@@ -360,6 +360,8 @@ When the interface contract doesn't support async readiness (e.g. existing `Matr
 
 ```kotlin
 import kotlinx.coroutines.delay
+import org.matrix.rustcomponents.sdk.Client
+import org.matrix.rustcomponents.sdk.Room
 
 suspend fun awaitRoom(client: Client, roomId: String): Room {
     val delays = longArrayOf(100, 200, 500, 1000, 2000, 5000)

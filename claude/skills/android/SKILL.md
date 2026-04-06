@@ -778,7 +778,7 @@ private fun validateAndLogin() {
 
 ### Injectable Dispatcher Pattern
 
-ViewModel classes that call `withContext(Dispatchers.IO)` are untestable without dispatcher injection. Add a `CoroutineDispatcher` constructor parameter defaulting to `Dispatchers.IO`. Tests inject `StandardTestDispatcher` so the scheduler is advanced deterministically by `runTest`:
+ViewModel classes that call `withContext(Dispatchers.IO)` are untestable without dispatcher injection. Add a `CoroutineDispatcher` constructor parameter defaulting to `Dispatchers.IO`. Tests inject `StandardTestDispatcher` and advance its scheduler explicitly via `testDispatcher.scheduler.advanceUntilIdle()`:
 
 ```kotlin
 class MainViewModel(
@@ -837,11 +837,11 @@ class MainViewModelTest {
         ).also { viewModels.add(it) }
 
     @Test
-    fun `pipeline transitions to idle after STT`() = runTest {
+    fun `init completes matrix sync`() = runTest {
+        // createViewModel() triggers initMatrixSync() in init block
         val viewModel = createViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        // trigger pipeline, assert state
         assertEquals(PipelineState.Idle, viewModel.state.value)
     }
 }
@@ -854,13 +854,13 @@ class MainViewModelTest {
 | Time model | Virtual — `delay()` advances instantly | Real — `delay()` blocks the thread |
 | Scheduler | Drives `StandardTestDispatcher`'s queue | Creates a `BlockingEventLoop` — cannot drive test scheduler |
 | Time control | `advanceUntilIdle()`, `advanceTimeBy()`, `runCurrent()` | None |
-| Use in tests | All coroutine unit tests | Never (see anti-pattern below) |
+| Use in tests | All coroutine unit tests | Avoid; only teardown with a real dispatcher (see below) |
 
 Always use `runTest` for coroutine unit tests. `runBlocking` is only safe at application entry points (`main()`) or in teardown code with a real dispatcher (see below).
 
 ### `releaseResources()` Pattern
 
-Extract resource cleanup into a `@VisibleForTesting` method callable from both `onCleared()` and test `@After`. When cleanup requires suspending calls (e.g. stopping a Matrix client), use `runBlocking` with a **hardcoded** real dispatcher — never the injectable `ioDispatcher`:
+Extract resource cleanup into a `@VisibleForTesting` method callable from both `onCleared()` and test `@After`. When cleanup requires suspending calls (e.g. stopping a Matrix client), use `runBlocking` with a **hardcoded** real dispatcher — never the injectable `ioDispatcher`. Note: `runBlocking` in `onCleared()` briefly blocks the main thread; keep the suspend call fast (signal-only, no heavy IO). For slow shutdown work, consider launching into a dedicated `CoroutineScope(Dispatchers.IO)` instead:
 
 ```kotlin
 override fun onCleared() {
@@ -1018,5 +1018,5 @@ private fun handlePermanentDenial(permission: String) {
 - **Calling `getRoom()` before Sliding Sync delivers rooms** — returns null immediately after `login()` or `restoreSession()`. Wait for `RoomListServiceState.RUNNING` or use retry with backoff. See "Sliding Sync Readiness" section.
 - **Missing Whisper tokens file** — `OfflineModelConfig.tokens` must point to `tiny.en-tokens.txt`. Without it, `OfflineRecognizer` native constructor returns null (0) and `createStream()` dereferences it → SIGSEGV. Validation fails silently at `offline-model-config.cc:101-106`.
 - **Registering `ActivityResultContracts` inside callbacks** — `registerForActivityResult()` must be called during Activity/Fragment initialization (before `STARTED` state). Calling it inside `onClick`, `onResume`, or any other post-init callback throws `IllegalStateException`. Register launchers during initialization, either as class members/properties or early in `onCreate()`.
-- **`runBlocking(testDispatcher)` outside `runTest`** — `StandardTestDispatcher` is not an `EventLoop`. `runBlocking` creates a `BlockingEventLoop` that cannot process the test scheduler's queue — the dispatched coroutine sits in the scheduler heap with nobody to advance it, hanging indefinitely. Affects `@Before`/`@After` methods, `onCleared()` teardown called from test cleanup, and any synchronous blocking path. Fix: use `runBlocking(Dispatchers.IO)` or plain `runBlocking()` for teardown code, even when the class has an injectable `ioDispatcher`.
+- **`runBlocking(testDispatcher)` outside `runTest`** — `StandardTestDispatcher` is not an `EventLoop`. `runBlocking` creates a `BlockingEventLoop` that cannot process the test scheduler's queue — the dispatched coroutine sits in the scheduler heap with nobody to advance it, hanging indefinitely. Affects `@Before`/`@After` methods, `onCleared()` teardown called from test cleanup, and any synchronous blocking path. Fix: use `runBlocking(Dispatchers.IO)` or `runBlocking(Dispatchers.Default)` for blocking teardown code, and ensure the teardown path does not dispatch onto the injected test dispatcher.
 - **Leaking `viewModelScope` collectors in tests** — `viewModelScope.launch { sharedFlow.collect { ... } }` started in `init` survives individual tests on a process-wide `SharedFlow`. Without explicit cleanup, collectors from earlier tests accumulate, causing cross-test interference and non-deterministic failures. Use `@VisibleForTesting internal fun releaseResources()` called from `@After` to cancel pending jobs before `Dispatchers.resetMain()`.

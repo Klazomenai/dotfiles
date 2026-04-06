@@ -824,9 +824,12 @@ class MainViewModelTest {
 
     @After
     fun tearDown() {
-        viewModels.forEach { it.releaseResources() }
-        viewModels.clear()
-        Dispatchers.resetMain()
+        try {
+            viewModels.forEach { it.releaseResources() }
+            viewModels.clear()
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 
     private fun createViewModel(): MainViewModel =

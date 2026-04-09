@@ -873,6 +873,10 @@ override fun onCleared() {
 
 @VisibleForTesting
 internal fun releaseResources() {
+    // Cancel any viewModelScope collectors (e.g. SharedFlow subscribers
+    // launched in init). viewModelScope.cancel() is called automatically
+    // by onCleared() in production; in tests, clearing the viewModels
+    // list lets the ViewModel be GC'd which cancels its scope.
     pendingResponse?.cancel()
     pendingResponse = null
     sttEngine.close()

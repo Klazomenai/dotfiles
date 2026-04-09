@@ -873,10 +873,10 @@ override fun onCleared() {
 
 @VisibleForTesting
 internal fun releaseResources() {
-    // Cancel any viewModelScope collectors (e.g. SharedFlow subscribers
-    // launched in init). viewModelScope.cancel() is called automatically
-    // by onCleared() in production; in tests, clearing the viewModels
-    // list lets the ViewModel be GC'd which cancels its scope.
+    // In production, onCleared() cancels viewModelScope automatically.
+    // In tests, track collector Jobs here if init launches long-lived
+    // collectors (e.g. collectorJob?.cancel()), or ensure @After calls
+    // onCleared() via ViewModelStore to trigger scope cancellation.
     pendingResponse?.cancel()
     pendingResponse = null
     sttEngine.close()
@@ -1026,4 +1026,4 @@ private fun handlePermanentDenial(permission: String) {
 - **Missing Whisper tokens file** — `OfflineModelConfig.tokens` must point to `tiny.en-tokens.txt`. Without it, `OfflineRecognizer` native constructor returns null (0) and `createStream()` dereferences it → SIGSEGV. Validation fails silently at `offline-model-config.cc:101-106`.
 - **Registering `ActivityResultContracts` inside callbacks** — `registerForActivityResult()` must be called during Activity/Fragment initialization (before `STARTED` state). Calling it inside `onClick`, `onResume`, or any other post-init callback throws `IllegalStateException`. Register launchers during initialization, either as class members/properties or early in `onCreate()`.
 - **`runBlocking(testDispatcher)` outside `runTest`** — `StandardTestDispatcher` is not an `EventLoop`. `runBlocking` creates a `BlockingEventLoop` that cannot process the test scheduler's queue — the dispatched coroutine sits in the scheduler heap with nobody to advance it, hanging indefinitely. Affects `@Before`/`@After` methods, `onCleared()` teardown called from test cleanup, and any synchronous blocking path. Fix: use `runBlocking(Dispatchers.IO)` or `runBlocking(Dispatchers.Default)` for blocking teardown code, and ensure the teardown path does not dispatch onto the injected test dispatcher.
-- **Leaking `viewModelScope` collectors in tests** — `viewModelScope.launch { sharedFlow.collect { ... } }` started in `init` survives individual tests when they share the same `SharedFlow` instance (e.g. via a singleton, static object, or reused DI graph). Without explicit cleanup, collectors from earlier tests accumulate, causing cross-test interference and non-deterministic failures. Use `@VisibleForTesting internal fun releaseResources()` called from `@After` to cancel pending jobs before `Dispatchers.resetMain()`.
+- **Leaking `viewModelScope` collectors in tests** — `viewModelScope.launch { sharedFlow.collect { ... } }` started in `init` survives individual tests when they share the same `SharedFlow` instance (e.g. via a singleton, static object, or reused DI graph). Without explicit cleanup, collectors from earlier tests accumulate, causing cross-test interference and non-deterministic failures. In `@After`, cancel collector `Job`s via `releaseResources()` or trigger `onCleared()` to cancel `viewModelScope` — do not rely on GC to cancel the scope.

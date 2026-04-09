@@ -886,7 +886,7 @@ internal fun releaseResources() {
 }
 ```
 
-`@After` calls `releaseResources()` **before** `Dispatchers.resetMain()` — resetting Main first would break any `viewModelScope` cancellation that dispatches to Main.
+`@After` calls `releaseResources()` **before** `Dispatchers.resetMain()` — perform all cleanup first, because teardown code may still dispatch to `Dispatchers.Main`; resetting Main too early can break that cleanup.
 
 ## Runtime Permissions (ActivityResultContracts)
 

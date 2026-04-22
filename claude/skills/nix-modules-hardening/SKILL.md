@@ -7,15 +7,19 @@ description: NixOS service module authoring — option conventions (mkEnableOpti
 
 Scope: authoring NixOS service modules with defense-in-depth systemd hardening. Complements the [`nix` skill](../nix/SKILL.md) which covers flake-level concerns (build hygiene, OCI images, task-runner layering). Where the `nix` skill stops at "how to produce an artefact", this one starts at "how to run that artefact as a hardened systemd service".
 
+### A note on `lib.*` qualifiers in the snippets
+
+Many reference excerpts in this skill are quoted verbatim from `nixpkgs/nixos/modules/services/`, where the surrounding module evaluates under `with lib;` or has `inherit (lib) ...` — so calls like `mkIf`, `mkDefault`, `optional`, `getExe` appear unqualified. Snippets marked as **copy-paste templates** (the LoadCredential wiring and the Quick-Reference Baseline Template at the end) use the explicit `lib.` qualifier so they can be dropped into any module context without assuming `lib` is in scope. If you copy a verbatim-upstream snippet elsewhere, either wrap it in `with lib; { ... }` or prefix each `lib.*` call accordingly.
+
 ## Module Option Conventions
 
 ### `mkEnableOption`
 
-Universal form — no variations observed across nixpkgs:
+Canonical form — the same function in both idioms; the second variant is just fully qualified:
 
 ```nix
-enable = mkEnableOption "PostgreSQL Server";
-enable = lib.mkEnableOption "Redis server";
+enable = mkEnableOption "PostgreSQL Server";   # with `with lib;` in scope
+enable = lib.mkEnableOption "Redis server";    # explicit qualifier
 ```
 
 The argument is a short human-readable noun phrase. Do NOT use "the <name>" or full sentences.
@@ -150,11 +154,11 @@ APP_SECRET_FILE = mkOption {
   '';
 };
 
-# serviceConfig wiring
+# serviceConfig wiring (copy-paste template — qualifiers explicit)
 serviceConfig = {
   DynamicUser = true;
   LoadCredential =
-    optional (cfg.settings.APP_SECRET_FILE != null)
+    lib.optional (cfg.settings.APP_SECRET_FILE != null)
       "appSecret:${cfg.settings.APP_SECRET_FILE}";
   # ...
 };
@@ -162,7 +166,7 @@ serviceConfig = {
 # Script reads the credential via systemd-creds (NOT via the source path)
 script = ''
   export APP_SECRET="$(systemd-creds cat appSecret)"
-  exec ${getExe cfg.package}
+  exec ${lib.getExe cfg.package}
 '';
 ```
 
@@ -339,10 +343,10 @@ The leading `~` applies to the whole expression — all listed groups are denied
 ```nix
 SystemCallFilter = [
   "~@cpu-emulation @debug @keyring @mount @obsolete @privileged @setuid"
-] ++ optional cfg.enableQuicBPF [ "bpf" ];
+] ++ lib.optional cfg.enableQuicBPF "bpf";
 ```
 
-Appending allows extra syscalls (`bpf` here) while the primary deny-list stays intact.
+Appending allows extra syscalls (`bpf` here) while the primary deny-list stays intact. Note: `lib.optional` takes a **single element** (`"bpf"`), not a list — using `lib.optional cond [ "bpf" ]` produces a nested list and breaks the concatenation. Use `lib.optionals cond [ "bpf" ]` only if the optional portion is already a list.
 
 ### Attrset with priority (PostgreSQL, advanced)
 
@@ -526,13 +530,15 @@ serviceConfig = {
   Restart = "always";
   StateDirectory = stateDir;
 
-  PrivateTmp = "true";
+  PrivateTmp = true;
   ProtectSystem = "full";
-  NoNewPrivileges = "true";
-  PrivateDevices = "true";
-  MemoryDenyWriteExecute = "true";
+  NoNewPrivileges = true;
+  PrivateDevices = true;
+  MemoryDenyWriteExecute = true;
 };
 ```
+
+Upstream geth uses string-valued booleans (`"true"`) here for historical reasons; systemd accepts them but bare Nix booleans (`true`/`false`) are the preferred form for new modules — normalised in the snippet above.
 
 Note the sparseness: geth is a P2P service whose workload is hard to box in with `SystemCallFilter` or `RestrictAddressFamilies` without breaking discovery. For Autonity (Go, similar P2P profile) the same minimalism is a safe starting point — add `RestrictAddressFamilies` with `AF_NETLINK` if interface enumeration is needed.
 
@@ -564,7 +570,7 @@ systemd.services.blockscout-backend = {
 - `EnvironmentFile=` pointing to a file in the Nix store — the store is world-readable; anything in a file path inside the store leaks to all system users
 - Binding a service to `0.0.0.0` by default — default to `127.0.0.1` unless the service's role is explicitly externally-facing (nginx, reverse proxies). Operators opt in to exposure
 - Missing `after = [ "network.target" ]` (or equivalent) on a network-using service — causes intermittent startup failures before networking is configured
-- `BindReadOnlyPaths = [ "/nix/store" ]` — redundant with `ProtectSystem = "strict"` / `"full"` which already makes `/usr` (the systemd-visible Nix store link) read-only
+- `BindReadOnlyPaths = [ "/nix/store" ]` — redundant with `ProtectSystem = "strict"` (which makes the entire filesystem read-only except `/dev`, `/proc`, `/sys`). Note: `ProtectSystem = "full"` only remounts `/usr`, `/boot`, `/efi`, `/etc` read-only, so `BindReadOnlyPaths = [ "/nix/store" ]` IS useful there if the service must not write under `/nix/store`
 - Omitting `CapabilityBoundingSet = [ "" ]` — the default is full capabilities; modern nixpkgs modules always drop to empty unless specific caps are needed
 - Setting `AmbientCapabilities` without matching `CapabilityBoundingSet` — ambient caps are effective only if the bounding set permits them; mismatch silently drops the capability
 - Hard-coding a UNIX socket path in a service option instead of deriving from `RuntimeDirectory` — the path changes with the service name, and hard-coded paths break consumers that use `SupplementaryGroups`
@@ -625,7 +631,7 @@ systemd.services.my-service = {
     UMask = "0077";
 
     # LoadCredential pattern (fill in as needed)
-    LoadCredential = optional (cfg.secretFile != null) "my-secret:${cfg.secretFile}";
+    LoadCredential = lib.optional (cfg.secretFile != null) "my-secret:${cfg.secretFile}";
   };
 };
 ```

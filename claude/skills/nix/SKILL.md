@@ -117,7 +117,7 @@ For forks intended for upstream contribution, match upstream's task-runner idiom
 | Upstream's task runner | Where to expose Nix | Example |
 |---|---|---|
 | Makefile (Go, C/C++, many Python projects) | Add targets to the existing Makefile | `test-nix-build: ; nix build .#default --print-build-logs` |
-| `mix.exs` aliases (Elixir/Phoenix) | Add entries under `aliases:` as function references | `"nix.build": fn _ -> Mix.shell().cmd("nix build") end` |
+| `mix.exs` aliases (Elixir/Phoenix) | Add entries under `aliases:` as function references with `case` + `Mix.raise/1` exit-status handling | See "Exposing Nix Entrypoints via Task Runners" below for the safe form |
 | `package.json` scripts (Node) | Keep upstream scripts untouched; optionally add a namespaced `nix:*` entry for discoverability | `"nix:build": "nix build .#default"` (optional) or no change + `enterShell`/README |
 | `Cargo.toml` (Rust, binary crates) | No `Cargo.toml` equivalent of npm scripts — surface Nix via `enterShell` / README / CI | No wrapper; `nix build` documented alongside `cargo build` |
 | None (greenfield project) | `devenv scripts`, `just`, or documented direct flake commands | `scripts.nix-build.exec = "nix build .#default";` |

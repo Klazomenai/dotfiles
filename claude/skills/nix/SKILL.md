@@ -1,6 +1,6 @@
 ---
 name: nix
-description: Nix flake hygiene, reproducible builds, OCI image patterns, devenv usage, Android SDK provisioning, and security enforcement. Use when working with flake.nix, devenv.nix, Nix builds, or Nix-based OCI container images.
+description: Nix flake hygiene, reproducible builds, OCI image patterns, devenv and task-runner layering, Android SDK provisioning, and security enforcement. Use when working with flake.nix, devenv.nix, Nix builds, Makefile/mix/pnpm integration with Nix, or Nix-based OCI container images.
 ---
 
 # Nix Skill
@@ -98,6 +98,87 @@ description: Nix flake hygiene, reproducible builds, OCI image patterns, devenv 
     else "0.1.0-dev";  # Fallback for dirty/uncommitted trees
   ```
 
+## Task Runners, Dev Shells, and Reproducible Builds
+
+Nix covers three distinct concerns that are easy to conflate. Treat them as three orthogonal layers:
+
+| Layer | Purpose | Tools | Example invocations |
+|---|---|---|---|
+| Developer environment | Pin tool versions, env vars, hooks, background processes | `devenv shell`, `nix develop` | `go version` resolves the pinned Go, `pnpm` resolves the pinned pnpm |
+| Task runner | Short commands for common operations (build, test, lint, deploy) | `Makefile`, `mix` aliases, `package.json` scripts, `just`, `devenv scripts` | `make test`, `mix test`, `pnpm build`, `just lint` |
+| Reproducible build | Hermetic, canonical, bit-for-bit identical output | `flake.nix` packages/checks, `nix build`, `nix run`, `nix flake check` | `nix build .#default`, `nix flake check` |
+
+Each layer sits on a separate rung. `devenv shell` does not produce artefacts. `nix build` is not a task runner — it is the hermetic artefact producer. Task runners are the contract between a developer's muscle memory and the underlying build/test commands, and they are where Nix entrypoints become discoverable to humans and CI.
+
+### Upstream-First Selection Heuristic
+
+For forks intended for upstream contribution, match upstream's task-runner idiom. Introducing a foreign runner (inventing a Makefile in an Elixir project, or replacing `pnpm` scripts with `devenv scripts`) breaks upstream conventions and makes upstream PRs harder to land.
+
+| Upstream's task runner | Where to expose Nix | Example |
+|---|---|---|
+| Makefile (Go, C/C++, many Python projects) | Add targets to the existing Makefile | `test-nix-build: ; nix build .#default --print-build-logs` |
+| `mix.exs` aliases (Elixir/Phoenix) | Add entries under `aliases:` as function references | `"nix.build": fn _ -> Mix.shell().cmd("nix build") end` |
+| `package.json` scripts (Node) | Keep upstream scripts untouched; let `devenv.nix` pin Node/pnpm | No change to `"scripts"`; `nix build` stands alongside `pnpm build` |
+| `Cargo.toml` (Rust, binary crates) | `cargo` is self-sufficient; expose Nix via flake only | No wrapper; `nix build` stands alongside `cargo build` |
+| None (greenfield project) | `devenv scripts` or `just` | `scripts.nix-build.exec = "nix build .#default";` |
+| Fork whose upstream has NO Makefile | **Never invent a Makefile** — use upstream's native runner | Elixir upstream → `mix` aliases, not a new Makefile |
+
+### Exposing Nix Entrypoints via Task Runners
+
+Go + Makefile (upstream has `make`, extend it):
+
+```makefile
+test-nix-build:
+	nix build .#default --print-build-logs
+
+test-nix-check:
+	nix flake check . --print-build-logs
+```
+
+Elixir + `mix.exs` aliases (upstream has `mix`, extend it). String aliases are parsed as mix-task calls, so shell-out tasks MUST use function references — never strings:
+
+```elixir
+defp aliases do
+  [
+    "nix.build": fn _args ->
+      Mix.shell().cmd("nix build .#default --print-build-logs")
+    end,
+    "nix.check": fn _args ->
+      Mix.shell().cmd("nix flake check --print-build-logs")
+    end,
+  ]
+end
+```
+
+Node + `package.json` scripts (keep upstream scripts untouched; `devenv.nix` pins the toolchain):
+
+```json
+{
+  "scripts": {
+    "dev": "./tools/scripts/dev.sh",
+    "build": "next build",
+    "lint:tsc": "tsc -p ./tsconfig.json"
+  }
+}
+```
+
+`nix build .#default` remains the canonical hermetic entrypoint for CI and downstream operators; developers still type `pnpm build` inside `devenv shell` for iterative work. The two coexist — do not collapse them.
+
+### Discovery via `enterShell`
+
+Task runners advertise their targets via `make help`, `mix help`, etc. Nix entrypoints are not auto-discovered — surface them in the `enterShell` message so developers see them immediately on entering the dev shell:
+
+```nix
+enterShell = ''
+  echo "Nix:"
+  echo "  nix build .#default    - Build the project"
+  echo "  nix flake check        - Run hermetic checks"
+  echo ""
+  echo "Native:"
+  echo "  make test-nix-build    - Same hermetic build, via Makefile"
+'';
+```
+
 ## Devenv Patterns
 
 ### Package Management
@@ -129,7 +210,7 @@ description: Nix flake hygiene, reproducible builds, OCI image patterns, devenv 
     '';
   };
   ```
-- Prefer `scripts` over shell aliases or Makefiles for Nix-managed projects
+- Use `scripts` for devenv-local commands that don't belong in upstream's task runner (e.g. `build-wasm` that nothing else calls). For common tasks (build, test, lint), expose them through upstream's native runner — see "Task Runners, Dev Shells, and Reproducible Builds" above
 
 ### Git Hooks
 
@@ -245,3 +326,10 @@ Keep SDK versions consistent across all files:
 - Build tools (`gcc`, `rustc`, `go`) in OCI image runtime closure (bloated image)
 - `tag = "latest"` on OCI images built with Nix (defeats reproducibility)
 - Missing `pkgs.cacert` in OCI images that make HTTPS calls (TLS failures at runtime)
+- Inventing a Makefile in a fork whose upstream has no Makefile (breaks upstream contribution — use upstream's native runner: `mix` aliases, `package.json` scripts, etc.)
+- Mixing multiple task runners in one repo (Makefile + devenv scripts + `just`) — pick one per language and match upstream
+- `devenv scripts` that duplicate upstream task-runner commands (e.g. `scripts.test.exec = "mix test"`) — unnecessary indirection, run upstream's runner directly
+- Treating `nix build` as a task runner by wrapping arbitrary pre/post shell steps in its build phases — `nix build` is the hermetic artefact producer; put orchestration in a Makefile/mix/just target that invokes it
+- Omitting `nix build` and `nix flake check` targets from the upstream task runner (CI and operators can't discover the canonical hermetic entrypoints)
+- String-valued `mix` aliases that shell out (e.g. `"nix.build": "nix build .#default"`) — mix parses string aliases as mix-task invocations; shell-out tasks MUST use function references
+- Not messaging Nix entrypoints in `enterShell` (developers enter the dev shell and never discover `nix build` exists)

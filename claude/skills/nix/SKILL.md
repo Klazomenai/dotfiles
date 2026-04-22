@@ -137,7 +137,7 @@ test-nix-check:
 	nix flake check . --print-build-logs
 ```
 
-Elixir + `mix.exs` aliases (upstream has `mix`, extend it). String aliases are parsed as mix-task calls, so shell-out tasks MUST use function references — never strings. And `Mix.shell().cmd/1` returns the exit status as an integer, it does NOT raise on non-zero — CI would report success even when the shell command failed. Wrap in `case` + `Mix.raise/1` so non-zero propagates through the mix exit code:
+Elixir + `mix.exs` aliases (upstream has `mix`, extend it). In `mix`, string aliases are interpreted as Mix task invocations, not shell commands, so a bare alias like `"nix build .#default --print-build-logs"` would be treated as a Mix task name rather than executing `nix`. To run external commands, use a function alias that calls `Mix.shell().cmd/1`. Also note that `Mix.shell().cmd/1` returns the exit status as an integer; it does NOT raise on non-zero, so CI could report success even when the external command failed. Wrap it in `case` + `Mix.raise/1` so non-zero exits propagate through the mix exit code:
 
 ```elixir
 defp aliases do
@@ -339,6 +339,6 @@ Keep SDK versions consistent across all files:
 - `devenv scripts` that duplicate upstream task-runner commands (e.g. `scripts.test.exec = "mix test"`) — unnecessary indirection, run upstream's runner directly
 - Treating `nix build` as a task runner by wrapping arbitrary pre/post shell steps in its build phases — `nix build` is the hermetic artefact producer; put orchestration in a Makefile/mix/just target that invokes it
 - Hiding the canonical hermetic entrypoints (`nix build`, `nix flake check`) — if the repo already has an idiomatic upstream task runner, expose them there; otherwise make them discoverable via `enterShell` messaging and/or the README
-- String-valued `mix` aliases that shell out (e.g. `"nix.build": "nix build .#default"`) — mix parses string aliases as mix-task invocations; shell-out tasks MUST use function references
+- String-valued `mix` aliases that attempt to shell out using bare shell commands (e.g. `"nix.build": "nix build .#default"`) — mix parses string aliases as mix-task invocations; shell-out tasks MUST use function references
 - `Mix.shell().cmd/1` in `mix` aliases without exit-status handling — the call returns the exit status as an integer and does NOT raise; failing shell commands exit the alias with status 0 and CI reports success. Wrap in `case` + `Mix.raise/1` so non-zero propagates
 - Not messaging Nix entrypoints in `enterShell` (developers enter the dev shell and never discover `nix build` exists)

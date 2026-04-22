@@ -1,6 +1,6 @@
 ---
 name: nix
-description: Nix flake hygiene, reproducible builds, OCI image patterns, devenv usage, Android SDK provisioning, and security enforcement. Use when working with flake.nix, devenv.nix, Nix builds, or Nix-based OCI container images.
+description: Nix flake hygiene, reproducible builds, OCI image patterns, devenv and task-runner layering, Android SDK provisioning, and security enforcement. Use when working with flake.nix, devenv.nix, Nix builds, Makefile/mix/pnpm integration with Nix, or Nix-based OCI container images.
 ---
 
 # Nix Skill
@@ -98,6 +98,95 @@ description: Nix flake hygiene, reproducible builds, OCI image patterns, devenv 
     else "0.1.0-dev";  # Fallback for dirty/uncommitted trees
   ```
 
+## Task Runners, Dev Shells, and Reproducible Builds
+
+Nix covers three distinct concerns that are easy to conflate. Treat them as three orthogonal layers:
+
+| Layer | Purpose | Tools | Example invocations |
+|---|---|---|---|
+| Developer environment | Pin tool versions, env vars, hooks, background processes | `devenv shell`, `nix develop` | `go version` resolves the pinned Go, `pnpm` resolves the pinned pnpm |
+| Task runner | Short commands for common operations (build, test, lint, deploy) | `Makefile`, `mix` aliases, `package.json` scripts, `just`, `devenv scripts` | `make test`, `mix test`, `pnpm build`, `just lint` |
+| Reproducible build | Hermetic, canonical, bit-for-bit identical output | `flake.nix` packages/checks, `nix build`, `nix run`, `nix flake check` | `nix build .#default`, `nix flake check` |
+
+Each layer sits on a separate rung. `devenv shell` does not produce artefacts. `nix build` is not a task runner — it is the hermetic artefact producer. Task runners are the contract between a developer's muscle memory and the underlying build/test commands, and they are where Nix entrypoints become discoverable to humans and CI.
+
+### Upstream-First Selection Heuristic
+
+For forks intended for upstream contribution, match upstream's task-runner idiom. Introducing a foreign runner (inventing a Makefile in an Elixir project, or replacing `pnpm` scripts with `devenv scripts`) breaks upstream conventions and makes upstream PRs harder to land.
+
+| Upstream's task runner | Where to expose Nix | Example |
+|---|---|---|
+| Makefile (Go, C/C++, many Python projects) | Add targets to the existing Makefile | `test-nix-build: ; nix build .#default --print-build-logs` |
+| `mix.exs` aliases (Elixir/Phoenix) | Add entries under `aliases:` as function references with `case` + `Mix.raise/1` exit-status handling | See "Exposing Nix Entrypoints via Task Runners" below for the safe form |
+| `package.json` scripts (Node) | Keep upstream scripts untouched; optionally add a namespaced `nix:*` entry for discoverability | `"nix:build": "nix build .#default"` (optional) or no change + `enterShell`/README |
+| `Cargo.toml` (Rust, binary crates) | No `Cargo.toml` equivalent of npm scripts — surface Nix via `enterShell` / README / CI | No wrapper; `nix build` documented alongside `cargo build` |
+| None (greenfield project) | `devenv scripts`, `just`, or documented direct flake commands | `scripts.nix-build.exec = "nix build .#default";` |
+| Fork whose upstream has NO Makefile | **Never invent a Makefile** — use upstream's native runner | Elixir upstream → `mix` aliases, not a new Makefile |
+
+The goal is **discoverability** of the hermetic entrypoints, not uniformity of mechanism. Ecosystems that have an idiomatic task-runner surface (Makefile, `mix`, `pnpm`) earn a target or alias there. Ecosystems without one (Cargo; greenfield) surface `nix build` and `nix flake check` via `enterShell` messaging, README, and CI config — all three are valid discovery paths.
+
+### Exposing Nix Entrypoints via Task Runners
+
+Go + Makefile (upstream has `make`, extend it):
+
+```makefile
+test-nix-build:
+	nix build .#default --print-build-logs
+
+test-nix-check:
+	nix flake check . --print-build-logs
+```
+
+Elixir + `mix.exs` aliases (upstream has `mix`, extend it). In `mix`, string aliases are interpreted as Mix task invocations, not shell commands, so a bare alias like `"nix build .#default --print-build-logs"` would be treated as a Mix task name rather than executing `nix`. To run external commands, use a function alias that calls `Mix.shell().cmd/1`. Also note that `Mix.shell().cmd/1` returns the exit status as an integer; it does NOT raise on non-zero, so CI could report success even when the external command failed. Wrap it in `case` + `Mix.raise/1` so non-zero exits propagate through the mix exit code:
+
+```elixir
+defp aliases do
+  [
+    "nix.build": fn _args ->
+      case Mix.shell().cmd("nix build .#default --print-build-logs") do
+        0 -> :ok
+        status -> Mix.raise("`nix build` failed with exit status #{status}")
+      end
+    end,
+    "nix.check": fn _args ->
+      case Mix.shell().cmd("nix flake check --print-build-logs") do
+        0 -> :ok
+        status -> Mix.raise("`nix flake check` failed with exit status #{status}")
+      end
+    end,
+  ]
+end
+```
+
+Node + `package.json` scripts (keep upstream scripts untouched; `devenv.nix` pins the toolchain):
+
+```json
+{
+  "scripts": {
+    "dev": "./tools/scripts/dev.sh",
+    "build": "next build",
+    "lint:tsc": "tsc -p ./tsconfig.json"
+  }
+}
+```
+
+`nix build .#default` remains the canonical hermetic entrypoint for CI and downstream operators; developers still type `pnpm build` inside `devenv shell` for iterative work. The two coexist — do not collapse them.
+
+### Discovery via `enterShell`
+
+Task runners advertise their targets via `make help`, `mix help`, etc. Nix entrypoints are not auto-discovered — surface them in the `enterShell` message so developers see them immediately on entering the dev shell:
+
+```nix
+enterShell = ''
+  echo "Nix:"
+  echo "  nix build .#default    - Build the project"
+  echo "  nix flake check        - Run hermetic checks"
+  echo ""
+  echo "Native:"
+  echo "  make test-nix-build    - Same hermetic build, via Makefile"
+'';
+```
+
 ## Devenv Patterns
 
 ### Package Management
@@ -129,7 +218,7 @@ description: Nix flake hygiene, reproducible builds, OCI image patterns, devenv 
     '';
   };
   ```
-- Prefer `scripts` over shell aliases or Makefiles for Nix-managed projects
+- Use `scripts` for devenv-local commands that don't belong in upstream's task runner (e.g. `build-wasm` that nothing else calls). For common tasks (build, test, lint), expose them through upstream's native runner — see "Task Runners, Dev Shells, and Reproducible Builds" above
 
 ### Git Hooks
 
@@ -245,3 +334,11 @@ Keep SDK versions consistent across all files:
 - Build tools (`gcc`, `rustc`, `go`) in OCI image runtime closure (bloated image)
 - `tag = "latest"` on OCI images built with Nix (defeats reproducibility)
 - Missing `pkgs.cacert` in OCI images that make HTTPS calls (TLS failures at runtime)
+- Inventing a Makefile in a fork whose upstream has no Makefile (breaks upstream contribution — use upstream's native runner: `mix` aliases, `package.json` scripts, etc.)
+- Mixing multiple task runners in one repo (Makefile + devenv scripts + `just`) — pick one per language and match upstream
+- `devenv scripts` that duplicate upstream task-runner commands (e.g. `scripts.test.exec = "mix test"`) — unnecessary indirection, run upstream's runner directly
+- Treating `nix build` as a task runner by wrapping arbitrary pre/post shell steps in its build phases — `nix build` is the hermetic artefact producer; put orchestration in a Makefile/mix/just target that invokes it
+- Hiding the canonical hermetic entrypoints (`nix build`, `nix flake check`) — if the repo already has an idiomatic upstream task runner, expose them there; otherwise make them discoverable via `enterShell` messaging and/or the README
+- String-valued `mix` aliases that attempt to shell out using bare shell commands (e.g. `"nix.build": "nix build .#default"`) — mix parses string aliases as mix-task invocations; shell-out tasks MUST use function references
+- `Mix.shell().cmd/1` in `mix` aliases without exit-status handling — the call returns the exit status as an integer and does NOT raise; failing shell commands exit the alias with status 0 and CI reports success. Wrap in `case` + `Mix.raise/1` so non-zero propagates
+- Not messaging Nix entrypoints in `enterShell` (developers enter the dev shell and never discover `nix build` exists)

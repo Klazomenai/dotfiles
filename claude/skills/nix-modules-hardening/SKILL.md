@@ -182,8 +182,8 @@ Baseline systemd hardening options, grouped by concern. Every new service module
 
 | Option | Purpose | Default to |
 |---|---|---|
-| `ProtectSystem = "strict"` | `/usr`, `/boot`, `/efi`, `/etc` read-only, rest of `/` inaccessible | all services |
-| `ProtectSystem = "full"` | Slightly relaxed (parts of `/etc` still accessible) | if `strict` causes startup failure |
+| `ProtectSystem = "strict"` | Whole filesystem remounted read-only except API FS (`/dev`, `/proc`, `/sys`) and explicitly writable dirs (e.g. via `StateDirectory=` / `RuntimeDirectory=`) | all services |
+| `ProtectSystem = "full"` | `/usr`, `/boot`, `/efi`, and `/etc` remounted read-only; less restrictive than `strict` | if `strict` causes startup failure |
 | `ProtectHome = true` | `/home`, `/root`, `/run/user` inaccessible | all services |
 | `PrivateTmp = true` | Private `/tmp`, `/var/tmp` namespace | all services |
 | `PrivateDevices = true` | No `/dev/*` except baseline | all services that don't need hardware |

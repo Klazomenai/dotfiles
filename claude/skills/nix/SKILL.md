@@ -5,6 +5,8 @@ description: Nix flake hygiene, reproducible builds, OCI image patterns, devenv 
 
 # Nix Skill
 
+This skill covers flake-level concerns: building artefacts, packaging them for OCI, setting up devenv, layering task runners, Android SDK provisioning, and flake-evaluation security. Once you move from *producing* an artefact to *running it as a hardened systemd service on NixOS*, see the [`nix-modules-hardening` skill](../nix-modules-hardening/SKILL.md) for `services.<name>` module authoring, `DynamicUser` + `LoadCredential` patterns, and the systemd hardening matrix (`ProtectSystem`, `RestrictAddressFamilies`, `SystemCallFilter`, etc.).
+
 ## Flake Hygiene
 
 ### Input Updates

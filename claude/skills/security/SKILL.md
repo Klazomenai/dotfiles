@@ -43,6 +43,7 @@ description: Cross-cutting security guidance for authentication, authorisation, 
 - Never run `kubectl get secret -o yaml` — base64 is not encryption, and the output may be logged.
 - Terraform sensitive vars: use `TF_VAR_*` environment variables, never `-var` flags with inline values.
 - Git: never commit `.env`, `credentials.json`, private keys, or bearer tokens. Use `.gitignore` and pre-commit hooks.
+- NixOS services: ingest secrets via `LoadCredential=name:/path` on the systemd unit; the service reads from `$CREDENTIALS_DIRECTORY/name` and never touches the source path. Avoid `Environment=` / `EnvironmentFile=` for secrets, and avoid `export`-ing credentials into the process environment as the default pattern — `/proc/<pid>/environ` is visible to other processes with matching UID, and the value leaks into coredumps, child processes, and crash-reporter logs. See the [`nix-modules-hardening` skill](../nix-modules-hardening/SKILL.md) for the full wiring pattern with `DynamicUser` services.
 
 ## Input Validation
 
@@ -62,6 +63,7 @@ description: Cross-cutting security guidance for authentication, authorisation, 
 - Rust binaries: static linking via `x86_64-unknown-linux-musl` target or Nix `pkgsStatic`.
 - No shell in production containers where possible — reduces attack surface for container escape.
 - Read-only filesystem: set `readOnlyRootFilesystem: true` in Kubernetes security context.
+- NixOS systemd services are the non-container equivalent: use `DynamicUser = true;` (stateless services), `ProtectSystem = "strict"`, `NoNewPrivileges`, `CapabilityBoundingSet = [ "" ]`, narrow `RestrictAddressFamilies`, and `SystemCallFilter` with the standard deny groups. See the [`nix-modules-hardening` skill](../nix-modules-hardening/SKILL.md) for the full defense-in-depth matrix and JIT opt-outs for BEAM / V8 / LuaJIT / ONNX / JVM runtimes.
 
 ## Fail-Closed Design
 

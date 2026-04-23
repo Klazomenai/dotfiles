@@ -140,11 +140,14 @@ RuntimeDirectoryMode = "0750";
 Secrets ingestion that works with `DynamicUser`. The service **never reads the source file directly** — systemd reads it (with root privileges) and exposes the content via a credential name under `$CREDENTIALS_DIRECTORY` (a read-only tmpfs the service process can read). The shared option declaration looks like:
 
 ```nix
-# Option declaration (what the operator configures)
+# Option declaration — top-level for this flattened example.
+# (Upstream Umami nests env-var-mirroring options under a `settings` submodule;
+# see "Module Option Conventions" above for that pattern. The flattened form
+# here keeps the LoadCredential lesson self-contained and directly copy-pasteable.)
 APP_SECRET_FILE = mkOption {
   type = types.nullOr types.str;
   default = null;
-  example = "/run/secrets/umamiAppSecret";
+  example = "/run/secrets/appSecret";
   description = ''
     A file containing a secure random string. The contents of the file are read
     through systemd credentials; the user running the service does not need
@@ -156,13 +159,13 @@ APP_SECRET_FILE = mkOption {
 serviceConfig = {
   DynamicUser = true;
   LoadCredential =
-    lib.optional (cfg.settings.APP_SECRET_FILE != null)
-      "appSecret:${cfg.settings.APP_SECRET_FILE}";
+    lib.optional (cfg.APP_SECRET_FILE != null)
+      "appSecret:${cfg.APP_SECRET_FILE}";
   # ... (+ ExecStart or script, see below)
 };
 ```
 
-Credential names (`appSecret` above) are arbitrary — they only have to match between `LoadCredential=name:path` and the consumer. The source file path at `/run/secrets/umamiAppSecret` is the concern of the secrets manager (sops-nix / agenix), orthogonal to `LoadCredential`.
+Credential names (`appSecret` above) are arbitrary — they only have to match between `LoadCredential=name:path` and the consumer. The source file path at `/run/secrets/appSecret` is the concern of the secrets manager (sops-nix / agenix), orthogonal to `LoadCredential`.
 
 ### How the service consumes the credential — three patterns, in preference order
 

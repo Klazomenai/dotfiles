@@ -137,9 +137,7 @@ RuntimeDirectoryMode = "0750";
 
 ### `LoadCredential`
 
-Secrets ingestion that works with `DynamicUser`. The service **never reads the source file directly** — systemd reads it (with root privileges) and exposes the content via a credential name under `$CREDENTIALS_DIRECTORY`. Service reads via `systemd-creds cat <name>` or `cat $CREDENTIALS_DIRECTORY/<name>`.
-
-Umami (Node.js analytics) wires this end-to-end:
+Secrets ingestion that works with `DynamicUser`. The service **never reads the source file directly** — systemd reads it (with root privileges) and exposes the content via a credential name under `$CREDENTIALS_DIRECTORY` (a read-only tmpfs the service process can read). The shared option declaration looks like:
 
 ```nix
 # Option declaration (what the operator configures)
@@ -149,7 +147,7 @@ APP_SECRET_FILE = mkOption {
   example = "/run/secrets/umamiAppSecret";
   description = ''
     A file containing a secure random string. The contents of the file are read
-    through systemd credentials, therefore the user running umami does not need
+    through systemd credentials; the user running the service does not need
     permissions to read the file.
   '';
 };
@@ -160,19 +158,52 @@ serviceConfig = {
   LoadCredential =
     lib.optional (cfg.settings.APP_SECRET_FILE != null)
       "appSecret:${cfg.settings.APP_SECRET_FILE}";
-  # ...
+  # ... (+ ExecStart or script, see below)
 };
-
-# Script reads the credential via systemd-creds (NOT via the source path)
-script = ''
-  export APP_SECRET="$(systemd-creds cat appSecret)"
-  exec ${lib.getExe cfg.package}
-'';
 ```
 
 Credential names (`appSecret` above) are arbitrary — they only have to match between `LoadCredential=name:path` and the consumer. The source file path at `/run/secrets/umamiAppSecret` is the concern of the secrets manager (sops-nix / agenix), orthogonal to `LoadCredential`.
 
-**Rule**: never put secrets in `Environment=`, `EnvironmentFile=`, or the Nix store. `LoadCredential=` is the correct ingestion path for `DynamicUser` services.
+### How the service consumes the credential — three patterns, in preference order
+
+**Pattern 1 — preferred: application reads `$CREDENTIALS_DIRECTORY/<name>` directly** (file stays inside systemd's tmpfs, never enters process env):
+
+```nix
+# The service binary takes a --secret-file flag pointing at an existing path
+serviceConfig.ExecStart = "${lib.getExe cfg.package} --secret-file \${CREDENTIALS_DIRECTORY}/appSecret";
+```
+
+**Pattern 2 — good: app accepts a config-file path, compose at ExecStartPre**:
+
+```nix
+# ExecStartPre templates a config file into $RUNTIME_DIRECTORY, substituting
+# the credential path (not its contents) — the secret never leaves the tmpfs
+serviceConfig = {
+  RuntimeDirectory = "my-service";
+  ExecStartPre = "${pkgs.writeShellScript "render-config" ''
+    ${pkgs.envsubst}/bin/envsubst < ${configTemplate} > $RUNTIME_DIRECTORY/config
+  ''}";
+  ExecStart = "${lib.getExe cfg.package} --config $RUNTIME_DIRECTORY/config";
+};
+```
+
+**Pattern 3 — last resort: env-only apps (Node.js process.env, Elixir `System.get_env`, many legacy tools)**:
+
+```nix
+# The application only accepts secrets via env vars. Export from
+# $CREDENTIALS_DIRECTORY just before exec. Secret IS now in process env —
+# visible in /proc/<pid>/environ, inherited by child processes, and at risk
+# of leaking into coredumps or crash-reporter logs. Use only when the app
+# gives no file-path alternative.
+script = ''
+  export APP_SECRET="$(cat "$CREDENTIALS_DIRECTORY/appSecret")"
+  exec ${lib.getExe cfg.package}
+'';
+```
+
+**Residual-risk note**: the critical boundary is between "secret inside systemd's credential tmpfs" (isolated to the service process) and "secret in process env / a writable file" (multiple leak paths — `/proc/<pid>/environ`, coredumps, child inheritance, accidental logging). Pattern 1 keeps the secret inside the tmpfs for its entire lifetime; Pattern 3 crosses the boundary and should be a conscious choice, not a default. If an app gives you a `--secret-file` or `--config` option, always prefer it over setting an env var.
+
+**Rule**: never put secrets in `Environment=`, `EnvironmentFile=`, or the Nix store. `LoadCredential=` + Pattern 1 is the correct ingestion path for `DynamicUser` services; Pattern 3 is the documented compromise when an app can't be changed.
 
 ## Defense-in-Depth Hardening Matrix
 
@@ -382,12 +413,12 @@ For new services, start with:
 
 ```nix
 SystemCallFilter = [
-  "~@cpu-emulation @debug @keyring @mount @obsolete @privileged @resources @setuid"
+  "~@cpu-emulation @debug @keyring @memlock @mount @obsolete @privileged @resources @setuid"
 ];
 SystemCallArchitectures = "native";
 ```
 
-Loosen only when a specific syscall is required and diagnosed (e.g. `bpf` for nginx QUIC).
+Loosen only when a specific syscall is required and diagnosed (e.g. `bpf` for nginx QUIC, `mlock` for gpg-agent). `@memlock` is included by default — services rarely need to pin memory, and blocking it prevents a trivial DoS vector.
 
 ## `SupplementaryGroups` for Cross-Service UNIX Socket Access
 
@@ -397,11 +428,13 @@ When a `DynamicUser` service needs to read another service's UNIX socket, grant 
 serviceConfig = {
   DynamicUser = true;
   # ...
-  SupplementaryGroups = mkIf (cfg.redis.enable && isRedisUnixSocket) [
+  SupplementaryGroups = lib.optionals (cfg.redis.enable && isRedisUnixSocket) [
     config.services.redis.servers.immich.group
   ];
 };
 ```
+
+Upstream Immich uses `mkIf` here; inside a full NixOS module evaluation the module system processes the `mkIf` marker and both produce the same final list. `lib.optionals` is strictly simpler — a pure list expression that returns the list or `[]` without module-system magic, safer when the snippet is copied into unfamiliar contexts.
 
 Mechanism:
 
@@ -566,7 +599,8 @@ systemd.services.blockscout-backend = {
 ## Anti-Patterns
 
 - Using a static UID without a stateful-data justification — if you can't name a specific reason tied to on-disk persistence (e.g. PostgreSQL data directory ownership), use `DynamicUser = true`
-- Storing secrets in `Environment=` or in the Nix store — always ingest via `LoadCredential=name:/path`, service reads via `systemd-creds cat name`; never via the source path
+- Storing secrets in `Environment=` or in the Nix store — always ingest via `LoadCredential=name:/path`; service reads from `$CREDENTIALS_DIRECTORY/name`, never from the source path
+- Loading a credential via `LoadCredential=` and then `export`-ing it into the process environment as the **default** pattern — exposure via `/proc/<pid>/environ`, coredumps, child-process inheritance. Prefer passing `$CREDENTIALS_DIRECTORY/<name>` as a file-path CLI flag or config path; fall back to `export` only when the app truly has no file-path option
 - `EnvironmentFile=` pointing to a file in the Nix store — the store is world-readable; anything in a file path inside the store leaks to all system users
 - Binding a service to `0.0.0.0` by default — default to `127.0.0.1` unless the service's role is explicitly externally-facing (nginx, reverse proxies). Operators opt in to exposure
 - Missing `after = [ "network.target" ]` (or equivalent) on a network-using service — causes intermittent startup failures before networking is configured

@@ -56,7 +56,15 @@ comment-only changes). Hardening drv hash unchanged
 (`lqhfcckvx8d8`).
 ```
 
-The hash is the prefix of the `.drv` filename returned by `nix flake check --print-build-logs` (or `nix path-info` on an existing build output). Reviewers can re-verify with their own `nix flake check`.
+The hash is the leading 32-character prefix of the `.drv` filename in `/nix/store/`. To find it deterministically:
+
+- For a flake check or attribute output: `nix path-info --derivation .#checks.x86_64-linux.<name>` (or `.#packages.<system>.<attr>`) prints the full `.drv` path; the hash is the prefix.
+- For an existing build output (something already in `./result` or another store path): `nix path-info --derivation <out>` resolves the output back to the `.drv` that produced it. **Plain `nix path-info <out>` returns the OUTPUT path, not the derivation; you need the `--derivation` flag for the `.drv`.**
+- If you only want the output path itself (e.g. to confirm two builds produced the same artefact rather than the same recipe), `nix build --no-link --print-out-paths .#<attr>` is the matching command.
+
+`nix flake check --print-build-logs` prints build progress and surfaces evaluation-resolved drv paths in lines like `derivation evaluated to /nix/store/<hash>-<name>.drv` — readable in the log stream but not a deterministic single-output value to script against. For machine-friendly extraction, use `nix path-info --derivation` directly.
+
+Reviewers can re-verify with their own `nix flake check` + the same `nix path-info --derivation` command.
 
 Useful for:
 
@@ -261,7 +269,7 @@ enterShell = ''
 
 ## String Interpolation and Runtime File Staging
 
-Two patterns that come up whenever a flake renders shell commands or stages files into a runtime location.
+A few patterns and gotchas that come up whenever a flake renders shell commands or stages files into a runtime location.
 
 ### `lib.escapeShellArg` over manual `'…'`
 
@@ -318,7 +326,7 @@ The bytes are non-secret (enode URIs, peer hostnames, etc.) so store-residency i
 
 - **`pkgs.writeText`** — produces a content-addressed store path with the JSON-serialised list as its contents. Rebuilds with a changed `cfg.staticNodes` produce a different store path, so the install step on next start picks up the new bytes.
 - **`install -m 0600 -T`** — copies the staged file into place at unit start. `-m 0600` sets target mode in one syscall (no race window between create and chmod). **`-T` treats DEST as a regular file rather than a directory**, so the destination doesn't have to exist beforehand and ambiguity-shadowing-a-dir doesn't apply (e.g. if the operator's `StateDirectory` already has a `static-nodes.json` directory by mistake, `install -T` errors loudly instead of silently writing inside it).
-- **Why `install` not `cp` or `ln -s`**: `cp` doesn't atomically set mode (small race window), `ln -s` would put the file in `/nix/store/` and a `DynamicUser` may not have execute on the parent dirs anyway; `install` does the create-mode-set-write in one pass and writes a real file the consumer can `open(O_RDWR)` if it wants.
+- **Why `install` not `cp` or `ln -s`**: `cp` doesn't atomically set mode (small race window between create and chmod). `ln -s` points the runtime path at a store-resident target which is read-only and immutable — a consumer that wants to update the file in-place can't, `chmod` on the runtime path follows the symlink and either errors or unsafely tries to mutate the store entry, and any sibling check that asserts the runtime path is off-store (e.g. the runtime secret-path check in `nix-modules-hardening`) correctly rejects it. `install` does create-set-mode-write in one pass and produces a real file the consumer can `open(O_RDWR)` and the operator can verify the perms of.
 - **`lib.optional (cond)`** — collapses to `[]` when the option is null, so the `ExecStartPre` directive simply isn't emitted on null. Cleaner than nested `mkIf` for this shape.
 
 Use this pattern for any "operator declares a list/config that the binary reads from a fixed file path" requirement that ISN'T a secret. For secrets, use `LoadCredential=` instead (see the `nix-modules-hardening` skill).
@@ -436,4 +444,4 @@ Keep SDK versions consistent across all files:
 - Not messaging Nix entrypoints in `enterShell` (developers enter the dev shell and never discover `nix build` exists)
 - Manual `'…'` wrappers around interpolated values in shell commands (`"cat '${cfg.passwordFile}' | tr ..."`) — break on a literal single quote in the value. Use `lib.escapeShellArg` for single args, `lib.escapeShellArgs` for lists.
 - `${VAR}` shell-style parameter expansions inside Nix `''…''` indented strings without the `''$` escape — Nix parses `${...}` as antiquotation everywhere in the string (including comment lines), so the shell never sees the literal expansion. See the "`''$` escape inside indented strings" subsection above.
-- `cp` or `ln -s` to stage operator-config files into a `StateDirectory` — `cp` has a chmod race window, `ln -s` leaves the file under `/nix/store/` which a `DynamicUser` may not be able to traverse. Use `${pkgs.coreutils}/bin/install -m <mode> -T <staged> <dest>` instead.
+- `cp` or `ln -s` to stage operator-config files into a `StateDirectory` — `cp` has a chmod race window between create and `chmod`. `ln -s` points the runtime path at a read-only / immutable store target, which means consumers can't update the file in-place, `chmod` on the runtime path follows the symlink and either errors or unsafely tries to mutate the store entry, and any sibling check that asserts the runtime path is off-store correctly rejects it. Use `${pkgs.coreutils}/bin/install -m <mode> -T <staged> <dest>` instead — produces a real off-store file with the right perms set atomically.

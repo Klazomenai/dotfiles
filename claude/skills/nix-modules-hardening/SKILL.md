@@ -117,12 +117,18 @@ extraPostMigrate = mkOption {
 };
 
 extraPostMigrateFile = mkOption {
-  type = types.nullOr types.str;
+  # `types.strMatching "^/"` rejects relative paths at the type level,
+  # before assertions run. Pair with the same eval-time
+  # `lib.hasPrefix "/nix/store/"` rejection + runtime `realpath -e`
+  # check used for every other path-typed secret option in this skill
+  # (see "Two-layer off-store path enforcement" above).
+  type = types.nullOr (types.strMatching "^/");
   default = null;
   description = ''
     Off-store alternative to `extraPostMigrate`. Absolute path to
-    a SQL file ingested via `LoadCredential=POST_MIGRATE_SQL=<path>`.
-    Two-layer off-store enforced (eval + runtime).
+    a SQL file ingested via `LoadCredential=POST_MIGRATE_SQL:<path>`
+    (note the `NAME:PATH` colon — NOT `NAME=PATH`; systemd rejects
+    the `=` form). Two-layer off-store enforced (eval + runtime).
   '';
 };
 ```

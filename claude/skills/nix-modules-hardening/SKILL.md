@@ -83,6 +83,90 @@ settings = mkOption {
 
 Every module accepting config SHOULD expose `settings` (or `extraArgs` for CLI-only programs) as the escape hatch — operators must never have to fork the module to set a config value.
 
+### Opt-in escape hatches for known-bad workarounds (`extra*` variants)
+
+Sometimes the upstream binary has a known bug that needs a workaround for ANY deployment to function. The naive shape is to bake the workaround into the wrapper as default behaviour, but that pattern silently bypasses the upstream fix forever once it ships — the workaround keeps firing because nobody remembers to remove it. The disciplined alternative is an **opt-in** escape hatch:
+
+- Default to off (empty string, `null`, etc.).
+- The integration-test fixture sets it to the workaround SQL/script value and explains why inline.
+- Production deployments get clean default behaviour and only opt in when they need to.
+- The unit logs a stderr line every time the option fires, so the workaround leaves an audit trail in `journalctl`.
+- Mutually-exclusive store-vs-tmpfs variants (`extraPostMigrate` accepting a string baked into `pkgs.writeText`, `extraPostMigrateFile` accepting a path ingested via `LoadCredential=`) cover both non-secret and secret cases.
+
+```nix
+extraPostMigrate = mkOption {
+  type = types.lines;
+  default = "";
+  description = ''
+    SQL block run by `psql` after migrations and before the BEAM
+    supervisor starts. Empty by default — operators opt in
+    explicitly.
+
+    WARNING: rendered into `pkgs.writeText` → world-readable file
+    in `/nix/store/`. MUST NOT contain sensitive values; for SQL
+    that has to carry secrets, use `extraPostMigrateFile` instead.
+
+    WARNING: SQL run here can silently bypass data-fix migrations.
+    The wrapper logs `applying ... extraPostMigrate{,File} SQL` to
+    stderr every invocation so the bypass is visible in journalctl.
+    Document each statement's reason in the value, and revisit on
+    every upstream version bump.
+
+    Mutually exclusive with `extraPostMigrateFile`.
+  '';
+};
+
+extraPostMigrateFile = mkOption {
+  type = types.nullOr types.str;
+  default = null;
+  description = ''
+    Off-store alternative to `extraPostMigrate`. Absolute path to
+    a SQL file ingested via `LoadCredential=POST_MIGRATE_SQL=<path>`.
+    Two-layer off-store enforced (eval + runtime).
+  '';
+};
+```
+
+Wire-up:
+
+```nix
+${optionalString (cfg.extraPostMigrate != "" || cfg.extraPostMigrateFile != null) ''
+  echo "my-service: applying services.my-service.extraPostMigrate{,File} SQL" >&2
+  ${pkgs.postgresql}/bin/psql ... -f ${
+    if cfg.extraPostMigrate != "" then
+      "${pkgs.writeText "post-migrate.sql" cfg.extraPostMigrate}"
+    else
+      ''"$CREDENTIALS_DIRECTORY/POST_MIGRATE_SQL"''
+  }
+''}
+```
+
+Plus a `config.assertions` entry asserting only one of the two is set.
+
+### SQL identifier case-folding hazard
+
+Options whose values land in BOTH unquoted SQL (where PostgreSQL folds to lowercase) AND double-quoted SQL (case-sensitive) MUST be constrained to lowercase identifiers. The most common pattern: a wrapper that uses nixpkgs' `services.postgresql.ensureUsers` (which issues unquoted `CREATE ROLE <name>`) AND then issues `ALTER ROLE "${cfg.username}" WITH PASSWORD …` with double quotes. If the operator sets `username = "Blockscout"`:
+
+1. `ensureUsers` runs `CREATE ROLE Blockscout` (unquoted) → folded to `blockscout`.
+2. The wrapper runs `ALTER ROLE "Blockscout" WITH PASSWORD …` (quoted) → looks for the exact identifier `Blockscout`.
+3. PostgreSQL: `role "Blockscout" does not exist`. Unit fails at start.
+
+```nix
+# WRONG — allows uppercase, lets the case-folding hazard through.
+username = mkOption {
+  type = types.strMatching "^[a-zA-Z_][a-zA-Z0-9_]*$";
+  default = "myservice";
+};
+
+# RIGHT — lowercase-only, matches what `ensureUsers` actually creates.
+username = mkOption {
+  type = types.strMatching "^[a-z_][a-z0-9_]*$";
+  default = "myservice";
+};
+```
+
+Same constraint applies to `databaseName` and any other SQL identifier the wrapper double-quotes downstream. Add an inline comment on the option type explaining the case-folding rationale so future relaxations don't reintroduce the bug.
+
 ## Static vs Dynamic Users
 
 ### When to use `DynamicUser = true`
@@ -207,6 +291,114 @@ script = ''
 **Residual-risk note**: the critical boundary is between "secret inside systemd's credential tmpfs" (isolated to the service process) and "secret in process env / a writable file" (multiple leak paths — `/proc/<pid>/environ`, coredumps, child inheritance, accidental logging). Pattern 1 keeps the secret inside the tmpfs for its entire lifetime; Pattern 3 crosses the boundary and should be a conscious choice, not a default. If an app gives you a `--secret-file` or `--config` option, always prefer it over setting an env var.
 
 **Rule**: never put secrets in `Environment=`, `EnvironmentFile=`, or the Nix store. `LoadCredential=` + Pattern 1 is the correct ingestion path for `DynamicUser` services; Pattern 3 is the documented compromise when an app can't be changed.
+
+### Two-layer off-store path enforcement
+
+Every path-typed secret option (`*File` / `*.path`) takes a path that MUST resolve outside `/nix/store/`. A single layer of `lib.hasPrefix "/nix/store/" path` at evaluation time is necessary but **not sufficient**:
+
+```nix
+# WRONG — single layer, lets symlinks-into-store through.
+{
+  assertion =
+    lib.hasPrefix "/" cfg.secretFile
+    && !lib.hasPrefix "/nix/store/" cfg.secretFile;
+  message = "...";
+}
+```
+
+The eval-time check catches Nix-path literals (`./secret` auto-copying to the store) and hand-written `/nix/store/...` paths, but **`environment.etc."<name>".text = …` slips through**: NixOS realises the bytes into a content-addressed store path and bind-mounts it at `/etc/<name>`. The consumer-visible path (`/etc/<name>`) is not literally under `/nix/store/`, so the eval-time assertion passes — but the bytes ARE in the world-readable store, defeating the secrets contract.
+
+The fix is two layers:
+
+1. **Eval-time** `lib.hasPrefix` (fast, fails the build on the obvious mistakes).
+2. **Runtime** `realpath -e` `ExecStartPre=+<helper>` script (resolves symlinks, fails the unit if the resolved target is under `/nix/store/`).
+
+```nix
+# In `let`:
+checkSecretPathsScript = pkgs.writeShellScript "my-service-check-secret-paths" ''
+  set -u
+  fail=0
+
+  check() {
+    local name="$1" path="$2"
+    local resolved
+    if ! resolved=$(${pkgs.coreutils}/bin/realpath -e -- "$path" 2>/dev/null); then
+      echo "ERROR: services.my-service.''${name} = '$path' — does not exist, or has an unreadable parent directory at unit-start time." >&2
+      fail=1
+      return
+    fi
+    case "$resolved" in
+      /nix/store/*)
+        echo "ERROR: services.my-service.''${name} = '$path' resolves to '$resolved' which is under /nix/store/." >&2
+        echo "       Secrets in the world-readable Nix store defeat the module's secrets contract." >&2
+        echo "       Source from sops-nix / agenix into a tmpfs path (e.g. /run/secrets/...) instead." >&2
+        fail=1
+        ;;
+    esac
+  }
+
+  check secretFile ${lib.escapeShellArg cfg.secretFile}
+  ${lib.optionalString (cfg.cookieFile != null)
+    "check cookieFile ${lib.escapeShellArg cfg.cookieFile}"}
+
+  exit $fail
+'';
+
+# In serviceConfig:
+ExecStartPre = [ "+${checkSecretPathsScript}" ];
+```
+
+The leading `+` runs the helper as root regardless of `User=` / `DynamicUser=` — needed because operator-supplied secret paths under `/run/secrets/...` (sops-nix / agenix typical setup) are often locked down to mode 0700 root and the dynamic user can't `realpath -e` them. See "ExecStartPre privilege escalation" below for the full rationale.
+
+#### Third validation step: readability as the consuming user
+
+If the file will be read by something other than the unit's `User=` (a setup script invoked from the unit's main script that drops to a different user, a downstream `psql` heredoc that runs in postgres's `User=`), the runtime check must ALSO verify the consuming user can read the file. Otherwise a path that `realpath -e`s cleanly and is off-store can still fail downstream:
+
+```nix
+# In the check script, after the /nix/store/ check:
+if ! ${pkgs.util-linux}/bin/runuser -u postgres -- ${pkgs.coreutils}/bin/test -r "$resolved"; then
+  echo "ERROR: services.my-service.passwordFile = '$path' (resolved to '$resolved') is not readable as user 'postgres'." >&2
+  echo "       This file is consumed by a step running as User=postgres — it must own or have group-read on the file." >&2
+  echo "       Typical sops-nix shape: \`sops.secrets.<name>.owner = \"postgres\"\` with mode 0400 OR group-readable mode 0440." >&2
+  exit 1
+fi
+```
+
+Without this third step, a file mode 0400 root-owned passes the runtime check (root reads anything via the `+` prefix) but fails when later consumed by a non-root user — and **the failure is silent** if the consumer is a shell pipeline like `cat … | tr -d '\n'` (the `tr` exit status hides the `cat` failure). See the silent-empty-pipeline entry in Anti-Patterns.
+
+#### Assertion message wording
+
+Both layers' error messages should:
+
+- Name the **option** that's misconfigured (`services.<module>.<option>`).
+- Name the **resolved target path** at runtime, separately from the input path. The operator may not realise their `/etc/foo` resolved into the store; spelling out the resolved path is the bridge between symptom and cause.
+- Point at the canonical fix: sops-nix / agenix into a tmpfs path.
+
+### `ExecStartPre=+<path>` privilege escalation
+
+systemd allows prefixes on `ExecStart*` directives that change how the command is run. The `+` prefix runs the command as **root, ignoring `User=` / `DynamicUser=`**. Two situations where it's the right tool:
+
+1. **Runtime checks that need to traverse root-only directories.** `realpath -e` on `/run/secrets/blockscout/db_password` requires search access on `/run/secrets/blockscout/` — usually mode 0700 root via sops-nix. The unit's `DynamicUser` can't traverse that directory; root can.
+2. **One-shot setup tasks before the main exec.** Things like `install -m 0600 -T <staged> <runtime-path>` that need to write into a state directory the unit's user will own once it's running, but currently has root-managed permissions.
+
+The cost is well-bounded: `+`-prefixed steps run as root for that ExecStartPre only, then the main `ExecStart` drops back to the unit's configured user. The hardened sandbox (`ProtectSystem`, `RestrictAddressFamilies`, `SystemCallFilter`, etc.) STILL applies to the `+`-prefixed command — only the user identity changes. So you keep all of defense-in-depth and only relax the user-ID restriction for the specific step that needs root.
+
+```nix
+serviceConfig = {
+  DynamicUser = true;
+  # ...
+  ExecStartPre = [
+    # Root-elevated check — verifies operator-supplied secret paths
+    # before the main exec drops to DynamicUser.
+    "+${checkSecretPathsScript}"
+    # Non-root setup that runs as the eventual DynamicUser, no `+`.
+    "${pkgs.coreutils}/bin/install -d -m 0700 \${STATE_DIRECTORY}/cache"
+  ];
+  ExecStart = "${lib.getExe cfg.package}";
+};
+```
+
+Use the `+` prefix sparingly — every elevation is a small departure from the principle of least privilege. But **for runtime checks specifically, it's the correct tool**: the alternative is leaving the check unable to validate paths that genuinely need root traversal.
 
 ## Defense-in-Depth Hardening Matrix
 
@@ -599,6 +791,89 @@ systemd.services.blockscout-backend = {
 
 `network.target` is a systemd target meaning "networking is configured"; `network-online.target` is stronger (routes up). Use the weaker `network.target` unless the service needs outbound connections at startup.
 
+### Conditional ordering when an option can be local OR remote
+
+A common shape: an option whose value can point at either a local-loopback service (where the corresponding wrapper unit lives on this host) OR a remote host (where there is no local unit to order against). Hardcoded `requires=postgresql.service` on the consumer fails immediately on remote-host configs — the local `postgresql.service` doesn't exist, systemd reports "missing required unit", the consumer never starts.
+
+The pattern: a `loopbackHosts` predicate gates BOTH `after=`/`requires=` AND any local-vs-remote-different env-var defaults:
+
+```nix
+let
+  cfg = config.services.my-service;
+
+  # `localhost` covers IPv4 + IPv6 loopback via /etc/hosts;
+  # `127.0.0.1` is the IPv4 literal. The host regex on databaseHost
+  # (^[a-zA-Z0-9.-]+$) forbids `:`, so IPv6 literals like `::1`
+  # cannot be configured against this option type and would be
+  # unreachable defensive code if added here.
+  loopbackHosts = [ "localhost" "127.0.0.1" ];
+  postgresLocal = lib.elem cfg.databaseHost loopbackHosts;
+in {
+  systemd.services.my-service = {
+    after = [ "network-online.target" ]
+      ++ lib.optional postgresLocal "postgresql.service";
+    requires = lib.optional postgresLocal "postgresql.service";
+
+    environment = {
+      # Same predicate gates env-var defaults. ECTO_USE_SSL must
+      # be false against a plaintext loopback Postgres (the wrapper
+      # ships no certs); cloud-managed Postgres (RDS, Cloud SQL,
+      # Aurora) typically REQUIRES SSL, so non-loopback hosts get
+      # the safer default. Operators can always override via
+      # extraEnv.
+      ECTO_USE_SSL = if postgresLocal then "false" else "true";
+    };
+  };
+}
+```
+
+The predicate becomes the single source of truth for "is this dependency local". If the unit gains another flag whose default depends on the same question (timeouts, hostname-vs-IP forms, etc.), gate it on the same `postgresLocal` rather than re-deriving.
+
+**Edge case worth documenting on the option**: when the upstream binding option (e.g. `services.postgresql.settings.listen_addresses = "localhost"`) resolves the name and binds every returned address, leaving `databaseHost = "localhost"` is fine because both v4 + v6 loopback are reachable. When the upstream binds only the literal value (e.g. `services.redis.servers.<name>.bind = "127.0.0.1"`), the consumer's default should match the literal so `getaddrinfo("localhost")` returning `::1` first on dual-stack systems doesn't pick an unreachable address. Asymmetric defaults across two consumers reflect asymmetric upstream behaviour, not a bug.
+
+### Operator `extraEnv` precedence — gate hardcoded fallbacks
+
+The module-wide convention is "operator wins on key collision" — `extraEnv` is the operator's escape hatch and any hardcoded value the wrapper sets should not silently clobber it. The naive shape is to `export VAR="..."` unconditionally in the start script, which loses to whatever systemd `Environment=` set first and clobbers it BEFORE the BEAM/Node.js/Go process inherits the env. Gate the hardcoded fallback on `[ -z "${VAR:-}" ]`:
+
+```nix
+# WRONG — operator's extraEnv.RELEASE_COOKIE is silently clobbered.
+export RELEASE_COOKIE="$(openssl rand -hex 24)"
+exec ${cfg.package}/bin/server start
+
+# RIGHT — precedence chain: file > extraEnv > random fallback.
+${optionalString (cfg.cookieFile != null) ''
+  export RELEASE_COOKIE="$(cat "$CREDENTIALS_DIRECTORY/RELEASE_COOKIE")"
+''}
+${optionalString (cfg.cookieFile == null) ''
+  if [ -z "''${RELEASE_COOKIE:-}" ]; then
+    export RELEASE_COOKIE="$(${pkgs.openssl}/bin/openssl rand -hex 24)"
+  fi
+''}
+exec ${cfg.package}/bin/server start
+```
+
+Document the precedence chain in the option's docstring (`cookieFile` > `extraEnv.RELEASE_COOKIE` > random per-restart) so future reviewers don't reintroduce the unconditional export. Note the `''$` escape on `''${RELEASE_COOKIE:-}` — see "`''$` escape inside indented strings" below.
+
+### `''$` escape inside indented strings
+
+Indented `''…''` Nix strings parse `${var}` as antiquotation **everywhere inside the string**, including comment lines and shell `${VAR}` parameter expansions. To pass a literal `${...}` through to the rendered script body, escape with `''$`:
+
+```nix
+# WRONG — `${RELEASE_COOKIE:-}` parsed as Nix antiquotation; eval fails.
+startScript = pkgs.writeShellScript "start" ''
+  # Use `${RELEASE_COOKIE:-}` to test if it's set
+  if [ -z "${RELEASE_COOKIE:-}" ]; then ...; fi
+'';
+
+# RIGHT — `''$` escapes the dollar sign so Nix leaves `${...}` alone.
+startScript = pkgs.writeShellScript "start" ''
+  # Use `''${RELEASE_COOKIE:-}` to test if it's set
+  if [ -z "''${RELEASE_COOKIE:-}" ]; then ...; fi
+'';
+```
+
+The escape applies to comments too — a Nix-side comment inside an indented string is part of the string, not a Nix-language comment. If `${...}` appears in your prose, escape it with `''$` even if you don't intend it as an interpolation.
+
 ## Anti-Patterns
 
 - Using a static UID without a stateful-data justification — if you can't name a specific reason tied to on-disk persistence (e.g. PostgreSQL data directory ownership), use `DynamicUser = true`
@@ -617,6 +892,9 @@ systemd.services.blockscout-backend = {
 - `SystemCallFilter` that blanket-allows `@system-service` without `~@privileged ~@resources` — defeats most of the hardening; always pair the baseline group with explicit subtractions
 - Writing a new module that doesn't expose `extraArgs` / `settings` / `extraConfig` — operators will eventually need to pass a flag; if there's no escape hatch they must fork the module
 - Defining a service with `User =` and `Group =` but also `DynamicUser = true` — contradictory; systemd uses the dynamic allocation and ignores the static names, but the declaration is confusing and review-hostile
+- **Silent-empty-pipeline on secret reads** — `cat <file> | tr -d '\n'` (or any pipe with `cat` first) inherits the LAST stage's exit status, not `cat`'s. If `cat` fails (Permission denied, file missing) the trailing `tr` succeeds on empty input and the pipeline returns 0 with empty stdout. Catastrophic when the captured value drives `ALTER ROLE … WITH PASSWORD '<empty>'` (silently clears the password) or any other "pass empty string when secret is missing" downstream. Fix: preflight `cat <file> > /dev/null` (gets `cat`'s real exit status), `[ -s <file> ]` (rejects empty files), AND the `runuser -u <user> -- test -r` runtime check on the secrets path so unreadability fails the unit at unit-start before any consumer can see empty output. Defense-in-depth: ship all three, so losing one doesn't reintroduce the silent-clearing path.
+- **Mixed-case PostgreSQL identifiers** — letting `databaseName` / `username` accept uppercase (`^[a-zA-Z_]...`) breaks `ensureUsers` + double-quoted `ALTER ROLE` interaction. nixpkgs creates the role with unquoted CREATE (folds to lowercase); the wrapper later targets the exact-case identifier with double quotes and gets `role "Capitalized" does not exist`. Constrain to `^[a-z_][a-z0-9_]*$` — see "SQL identifier case-folding hazard" above.
+- **Operator `extraEnv` clobbered by hardcoded wrapper export** — module-wide rule is "operator wins on `extraEnv` key collision". Unconditional `export VAR="..."` in the start script clobbers whatever systemd `Environment=` set first. Gate the hardcoded fallback on `[ -z "''${VAR:-}" ]` (precedence chain: cookieFile/secretFile > extraEnv > random/computed fallback) and document the chain in the option's docstring.
 
 ## Quick-Reference Baseline Template
 

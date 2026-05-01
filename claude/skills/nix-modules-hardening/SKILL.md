@@ -130,7 +130,7 @@ extraPostMigrateFile = mkOption {
 Wire-up:
 
 ```nix
-${optionalString (cfg.extraPostMigrate != "" || cfg.extraPostMigrateFile != null) ''
+${lib.optionalString (cfg.extraPostMigrate != "" || cfg.extraPostMigrateFile != null) ''
   echo "my-service: applying services.my-service.extraPostMigrate{,File} SQL" >&2
   ${pkgs.postgresql}/bin/psql ... -f ${
     if cfg.extraPostMigrate != "" then
@@ -381,7 +381,13 @@ systemd allows prefixes on `ExecStart*` directives that change how the command i
 1. **Runtime checks that need to traverse root-only directories.** `realpath -e` on `/run/secrets/blockscout/db_password` requires search access on `/run/secrets/blockscout/` — usually mode 0700 root via sops-nix. The unit's `DynamicUser` can't traverse that directory; root can.
 2. **One-shot setup tasks before the main exec.** Things like `install -m 0600 -T <staged> <runtime-path>` that need to write into a state directory the unit's user will own once it's running, but currently has root-managed permissions.
 
-The cost is well-bounded: `+`-prefixed steps run as root for that ExecStartPre only, then the main `ExecStart` drops back to the unit's configured user. The hardened sandbox (`ProtectSystem`, `RestrictAddressFamilies`, `SystemCallFilter`, etc.) STILL applies to the `+`-prefixed command — only the user identity changes. So you keep all of defense-in-depth and only relax the user-ID restriction for the specific step that needs root.
+The cost is **not** just a temporary UID change. Per `systemd.exec(5)`, the `+` prefix runs the command with **full privileges** for that exec line: `ProtectSystem`, `RestrictAddressFamilies`, `SystemCallFilter`, capability bounds, namespace isolation, and most other sandboxing restrictions are bypassed. The main `ExecStart` still drops back to the unit's configured user, but the `+` step itself runs essentially uncontained — treat it as a narrowly-scoped privileged escape hatch.
+
+Practical guidance:
+
+- **Prefer designs that avoid `+` entirely.** If a runtime check can be expressed as a `config.assertions` entry at evaluation time, do that instead.
+- **If the intent is "run as root for startup credential / permission handling" without losing the sandbox**, consider `PermissionsStartOnly=true` (which keeps `ProtectSystem`, `SystemCallFilter`, etc. on while only granting root to `ExecStartPre`/`ExecStartPost` lines). It's narrower than `+` and worth reaching for first.
+- **If `+` is unavoidable** (e.g. the helper genuinely needs to traverse a `/run/secrets/` dir locked to mode 0700 root), keep it to a tiny purpose-built helper that does the minimum necessary work and exits. The smaller the privileged window, the less your security posture depends on the `+` step staying simple.
 
 ```nix
 serviceConfig = {
@@ -841,10 +847,10 @@ export RELEASE_COOKIE="$(openssl rand -hex 24)"
 exec ${cfg.package}/bin/server start
 
 # RIGHT — precedence chain: file > extraEnv > random fallback.
-${optionalString (cfg.cookieFile != null) ''
+${lib.optionalString (cfg.cookieFile != null) ''
   export RELEASE_COOKIE="$(cat "$CREDENTIALS_DIRECTORY/RELEASE_COOKIE")"
 ''}
-${optionalString (cfg.cookieFile == null) ''
+${lib.optionalString (cfg.cookieFile == null) ''
   if [ -z "''${RELEASE_COOKIE:-}" ]; then
     export RELEASE_COOKIE="$(${pkgs.openssl}/bin/openssl rand -hex 24)"
   fi

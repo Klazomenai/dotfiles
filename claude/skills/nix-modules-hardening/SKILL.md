@@ -85,7 +85,7 @@ Every module accepting config SHOULD expose `settings` (or `extraArgs` for CLI-o
 
 ### Opt-in escape hatches for known-bad workarounds (`extra*` variants)
 
-Sometimes the upstream binary has a known bug that needs a workaround for ANY deployment to function. The naive shape is to bake the workaround into the wrapper as default behaviour, but that pattern silently bypasses the upstream fix forever once it ships — the workaround keeps firing because nobody remembers to remove it. The disciplined alternative is an **opt-in** escape hatch:
+Sometimes the upstream binary has a known bug that some deployments need a workaround for (a specific affected version range, a particular runtime configuration that surfaces it, etc.). The naive shape is to bake the workaround into the wrapper as default behaviour, but that pattern silently bypasses the upstream fix forever once it ships — the workaround keeps firing because nobody remembers to remove it. The disciplined alternative is an **opt-in** escape hatch:
 
 - Default to off (empty string, `null`, etc.).
 - The integration-test fixture sets it to the workaround SQL/script value and explains why inline.
@@ -121,7 +121,7 @@ extraPostMigrateFile = mkOption {
   # before assertions run. Pair with the same eval-time
   # `lib.hasPrefix "/nix/store/"` rejection + runtime `realpath -e`
   # check used for every other path-typed secret option in this skill
-  # (see "Two-layer off-store path enforcement" above).
+  # (see "Two-layer off-store path enforcement" below).
   type = types.nullOr (types.strMatching "^/");
   default = null;
   description = ''
@@ -312,7 +312,7 @@ Every path-typed secret option (`*File` / `*.path`) takes a path that MUST resol
 }
 ```
 
-The eval-time check catches Nix-path literals (`./secret` auto-copying to the store) and hand-written `/nix/store/...` paths, but **`environment.etc."<name>".text = …` slips through**: NixOS realises the bytes into a content-addressed store path and bind-mounts it at `/etc/<name>`. The consumer-visible path (`/etc/<name>`) is not literally under `/nix/store/`, so the eval-time assertion passes — but the bytes ARE in the world-readable store, defeating the secrets contract.
+The eval-time check catches Nix-path literals (`./secret` auto-copying to the store) and hand-written `/nix/store/...` paths, but **`environment.etc."<name>".text = …` slips through**: NixOS realises the bytes into a content-addressed store path and exposes it at `/etc/<name>` via a symlink into the store. The consumer-visible path (`/etc/<name>`) is not literally under `/nix/store/`, so the eval-time assertion passes — but the bytes ARE in the world-readable store, defeating the secrets contract.
 
 The fix is two layers:
 
@@ -814,10 +814,11 @@ let
   cfg = config.services.my-service;
 
   # `localhost` covers IPv4 + IPv6 loopback via /etc/hosts;
-  # `127.0.0.1` is the IPv4 literal. The host regex on databaseHost
-  # (^[a-zA-Z0-9.-]+$) forbids `:`, so IPv6 literals like `::1`
-  # cannot be configured against this option type and would be
-  # unreachable defensive code if added here.
+  # `127.0.0.1` is the IPv4 literal. If your `databaseHost` option
+  # type does not allow `:` (e.g. a host regex like
+  # `^[a-zA-Z0-9.-]+$`), IPv6 literals like `::1` cannot be
+  # configured against it and would be unreachable defensive code
+  # if added here.
   loopbackHosts = [ "localhost" "127.0.0.1" ];
   postgresLocal = lib.elem cfg.databaseHost loopbackHosts;
 in {
@@ -845,7 +846,7 @@ The predicate becomes the single source of truth for "is this dependency local".
 
 ### Operator `extraEnv` precedence — gate hardcoded fallbacks
 
-The module-wide convention is "operator wins on key collision" — `extraEnv` is the operator's escape hatch and any hardcoded value the wrapper sets should not silently clobber it. The naive shape is to `export VAR="..."` unconditionally in the start script, which loses to whatever systemd `Environment=` set first and clobbers it BEFORE the BEAM/Node.js/Go process inherits the env. Gate the hardcoded fallback on `[ -z "${VAR:-}" ]`:
+The module-wide convention is "operator wins on key collision" — `extraEnv` is the operator's escape hatch and any hardcoded value the wrapper sets should not silently clobber it. The naive shape is to `export VAR="..."` unconditionally in the start script, which inherits whatever systemd `Environment=` set first and then overwrites/clobbers that value BEFORE the BEAM/Node.js/Go process inherits the env. Gate the hardcoded fallback on `[ -z "${VAR:-}" ]`:
 
 ```nix
 # WRONG — operator's extraEnv.RELEASE_COOKIE is silently clobbered.

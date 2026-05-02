@@ -40,7 +40,7 @@ description: Git and GitHub workflow guidance, including commits, branches, PRs,
   ## Test plan
   - [ ] Bulleted checklist of testing TODOs
   ```
-- Use temp files for PR bodies to avoid hook false positives: write body to file, use `-F "body=@file"`
+- Use temp files for PR bodies to avoid hook false positives: write body to file, then `gh pr create --body-file path/to/file --draft ...`. (Note: `--body-file <path>` is the `gh pr create` flag; the `-F body=@file` form-field syntax is for `gh api` calls only — see PR Review Replies below.)
 
 ## Issue Conventions
 

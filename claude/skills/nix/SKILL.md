@@ -46,6 +46,40 @@ This skill covers flake-level concerns: building artefacts, packaging them for O
 - Go modules: `vendorHash` must match vendored dependencies — update when `go.mod` changes
 - Rust crates: use `cargoLock.lockFile = ./Cargo.lock` — no hash needed when `Cargo.lock` is committed
 
+### Drv-hash stability as drift proof
+
+When a PR ships a refactor / formatting / comment-only change that's intended NOT to alter runtime behaviour, the rendered drv hash is the artefact-of-no-drift: if the hash before and after the change is byte-identical, the resulting derivation is too. Quote the hash in commit messages and PR bodies so reviewers don't have to re-derive it:
+
+```
+Local check: `all checks passed!` (cached integration drv —
+comment-only changes). Hardening drv hash unchanged
+(`lqhfcckvx8d8`).
+```
+
+The full hash is the leading 32-character base32 segment of the `.drv` filename in `/nix/store/` (e.g. `/nix/store/lqhfcckvx8d8zskw1z4lm4iiya98npzb-hardening-matrix-ok.drv`). In commit messages, quoting the first 8–12 characters is the practical community convention — Nix store hashes are dense enough that a 12-char prefix is essentially always unique within a project's store, and shorter prefixes keep commit messages readable. Pick a length and stay consistent across the PR. To find the full hash deterministically:
+
+- For a flake check or attribute output: `nix path-info --derivation .#checks.x86_64-linux.<name>` (or `.#packages.<system>.<attr>`) prints the full `.drv` path; the hash is the prefix.
+- For an existing build output (something already in `./result` or another store path): `nix path-info --derivation <out>` resolves the output back to the `.drv` that produced it. **Plain `nix path-info <out>` returns the OUTPUT path, not the derivation; you need the `--derivation` flag for the `.drv`.**
+- If you only want the output path itself (e.g. to confirm two builds produced the same artefact rather than the same recipe), `nix build --no-link --print-out-paths .#<attr>` is the matching command.
+
+`nix flake check --print-build-logs` prints build progress and surfaces evaluation-resolved drv paths in lines like `derivation evaluated to /nix/store/<hash>-<name>.drv` — readable in the log stream but not a deterministic single-output value to script against. For machine-friendly extraction, use `nix path-info --derivation` directly.
+
+Reviewers can re-verify with their own `nix flake check` + the same `nix path-info --derivation` command.
+
+Useful for:
+
+- Refactors where the rendered systemd unit / OCI image / config file is meant to stay byte-identical (comment-only edits, regex narrowing on values that already conformed, `lib.escapeShellArg` swaps where the output for the test fixture is identical).
+- Updates to a `tests/hardening-matrix.nix`-style static-shape check, where hash stability across a refactor proves no expected-shape regression.
+- Sandbox-irrelevant changes to a runtime script (preflight checks, audit-log lines, fail-fast guards) where the rendered unit drv may legitimately change but a sibling drv (e.g. `hardening`) shouldn't.
+
+Concrete language to use in commit messages:
+
+- **"Hardening drv hash unchanged (`<hash>`)"** — for changes that should NOT alter the security-relevant rendered shape.
+- **"Integration drv hash changed because <reason>; this is expected"** — for changes that DO alter the runtime artefact deliberately, with the reason called out.
+- **"Cached integration drv — comment-only changes"** — for changes that don't touch any rendered artefact at all.
+
+If you write "no shape drift" in a PR description, back it with the hash. The artefact is cheap to quote and turns a claim into a check.
+
 ## OCI Image Patterns
 
 ### Non-Root Requirement
@@ -233,6 +267,70 @@ enterShell = ''
   ```
 - These run automatically on `git commit` when the devenv is active
 
+## String Interpolation and Runtime File Staging
+
+A few patterns and gotchas that come up whenever a flake renders shell commands or stages files into a runtime location.
+
+### `lib.escapeShellArg` over manual `'…'`
+
+Any time you interpolate an operator-supplied or option-supplied string into a shell command (typically inside `pkgs.writeShellScript` or `pkgs.runCommand`), use `lib.escapeShellArg`, NOT a hand-rolled `'…'` wrapper. The naive form looks safe but breaks on values containing a literal single quote:
+
+```nix
+# WRONG — handles whitespace / globs but breaks if the value
+# contains a literal single quote: a path like `/foo'bar` closes
+# the wrapper's quote and re-opens shell parsing on the rest.
+"cat '${cfg.passwordFile}' | tr -d '\n'"
+
+# RIGHT — `lib.escapeShellArg` produces the canonical `'…'`
+# wrapper with embedded single quotes escaped via the `'\''`
+# idiom: `'/foo'\''bar'`. Survives any byte sequence the value
+# might contain.
+"cat ${lib.escapeShellArg cfg.passwordFile} | tr -d '\n'"
+```
+
+For lists of strings (multiple args at once), use `lib.escapeShellArgs` (plural — note the trailing `s`); it produces the joined, escaped, space-separated form you'd want to interpolate after a command name.
+
+This is the same hazard that makes shell-injection bugs in other languages so common; `lib.escapeShellArg` is the one-line fix and there's no good reason to roll the wrapper by hand.
+
+#### `''$` escape inside indented strings
+
+Related Nix-language gotcha: inside `''…''` indented strings, `${var}` is parsed as Nix antiquotation **everywhere** — including inside what would be shell `${VAR}` parameter expansions and even comment lines. To pass a literal `${...}` through to the rendered output (so the shell interpreter sees `${VAR}` not the antiquoted Nix value), escape with `''$`:
+
+```nix
+# WRONG — `${RELEASE_COOKIE:-}` parsed as Nix antiquotation; eval fails.
+script = pkgs.writeShellScript "x" ''
+  if [ -z "${RELEASE_COOKIE:-}" ]; then ...; fi
+'';
+
+# RIGHT — `''$` escapes the dollar sign so Nix leaves `${...}` alone.
+script = pkgs.writeShellScript "x" ''
+  if [ -z "''${RELEASE_COOKIE:-}" ]; then ...; fi
+'';
+```
+
+The escape applies to comments inside the string too (a Nix-side comment in an indented string is part of the string, not a Nix-language comment). Worked WRONG/RIGHT example with the full failure mode in the [`nix-modules-hardening` skill](../nix-modules-hardening/SKILL.md) under "`''$` escape inside indented strings".
+
+### `pkgs.writeText`-stage + `install -m 0600 -T` for non-secret operator-config files
+
+For non-secret operator-config files (peer lists, static-node configs, allowlists) that need to land in a `StateDirectory` with specific permissions, the canonical pattern is two-step: stage at build time via `pkgs.writeText`, install at unit start via `coreutils install`.
+
+```nix
+ExecStartPre = lib.optional (cfg.staticNodes != null) (
+  "${pkgs.coreutils}/bin/install -m 0600 -T "
+  + "${pkgs.writeText "static-nodes.json" (builtins.toJSON cfg.staticNodes)} "
+  + "\${STATE_DIRECTORY}/static-nodes.json"
+);
+```
+
+The bytes are non-secret (enode URIs, peer hostnames, etc.) so store-residency is fine — they're public node-identity hints, not credentials. Why each piece matters:
+
+- **`pkgs.writeText`** — produces a store path derived from the text contents (and the file name) so that any change to the JSON-serialised list yields a different store path. NOT to be confused with content-addressed (CA) derivations (`__contentAddressed = true`), which are a separate Nix mechanism — `pkgs.writeText` is input-addressed; the practical effect of "different bytes → different path" is what we rely on here. Rebuilds with a changed `cfg.staticNodes` therefore produce a different store path, and the install step on next start picks up the new bytes.
+- **`install -m 0600 -T`** — copies the staged file into place at unit start. `-m 0600` sets target mode in one syscall (no race window between create and chmod). **`-T` treats DEST as a regular file rather than a directory**, so the destination doesn't have to exist beforehand and ambiguity-shadowing-a-dir doesn't apply (e.g. if the operator's `StateDirectory` already has a `static-nodes.json` directory by mistake, `install -T` errors loudly instead of silently writing inside it).
+- **Why `install` not `cp` or `ln -s`**: `cp` doesn't atomically set mode (small race window between create and chmod). `ln -s` points the runtime path at a store-resident target which is read-only and immutable — a consumer that wants to update the file in-place can't, `chmod` on the runtime path follows the symlink and either errors or unsafely tries to mutate the store entry, and any sibling check that asserts the runtime path is off-store (e.g. the runtime secret-path check in `nix-modules-hardening`) correctly rejects it. `install` does create-set-mode-write in one pass and produces a real file the consumer can `open(O_RDWR)` and the operator can verify the perms of.
+- **`lib.optional (cond)`** — collapses to `[]` when the option is null, so the `ExecStartPre` directive simply isn't emitted on null. Cleaner than nested `mkIf` for this shape.
+
+Use this pattern for any "operator declares a list/config that the binary reads from a fixed file path" requirement that ISN'T a secret. For secrets, use `LoadCredential=` instead (see the `nix-modules-hardening` skill).
+
 ## Android SDK Provisioning
 
 Use `pkgs.androidenv.composeAndroidPackages` to declaratively provision the Android SDK — no manual SDK Manager installs, fully reproducible across machines and CI.
@@ -344,3 +442,6 @@ Keep SDK versions consistent across all files:
 - String-valued `mix` aliases that attempt to shell out using bare shell commands (e.g. `"nix.build": "nix build .#default"`) — mix parses string aliases as mix-task invocations; shell-out tasks MUST use function references
 - `Mix.shell().cmd/1` in `mix` aliases without exit-status handling — the call returns the exit status as an integer and does NOT raise; failing shell commands exit the alias with status 0 and CI reports success. Wrap in `case` + `Mix.raise/1` so non-zero propagates
 - Not messaging Nix entrypoints in `enterShell` (developers enter the dev shell and never discover `nix build` exists)
+- Manual `'…'` wrappers around interpolated values in shell commands (`"cat '${cfg.passwordFile}' | tr ..."`) — break on a literal single quote in the value. Use `lib.escapeShellArg` for single args, `lib.escapeShellArgs` for lists.
+- `${VAR}` shell-style parameter expansions inside Nix `''…''` indented strings without the `''$` escape — Nix parses `${...}` as antiquotation everywhere in the string (including comment lines), so the shell never sees the literal expansion. See the "`''$` escape inside indented strings" subsection above.
+- `cp` or `ln -s` to stage operator-config files into a `StateDirectory` — `cp` has a chmod race window between create and `chmod`. `ln -s` points the runtime path at a read-only / immutable store target, which means consumers can't update the file in-place, `chmod` on the runtime path follows the symlink and either errors or unsafely tries to mutate the store entry, and any sibling check that asserts the runtime path is off-store correctly rejects it. Use `${pkgs.coreutils}/bin/install -m <mode> -T <staged> <dest>` instead — produces a real off-store file with the right perms set atomically.

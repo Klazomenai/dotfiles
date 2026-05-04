@@ -20,7 +20,7 @@ description: Git and GitHub workflow guidance, including commits, branches, PRs,
 - NEVER push to "main" or default branch — NO EXCEPTIONS
 - NEVER create "master" branch
 - Naming: `<type>/<issue>-<description>` e.g. `feat/595-jaeger-tracing`, `fix/784-terraform-exit-code`
-- Types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `security`, `spike`
+- Types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `ci`, `security`, `spike`
 - Base branch: main | Merge style: squash merge | Delete branch after merge
 - No emojis in branch names
 

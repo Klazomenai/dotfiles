@@ -11,7 +11,7 @@ applies wherever this skill is loaded, including by autonomous agents that
 vendor or link this file.
 
 For human-Claude-Code-only addenda (co-author handling on private repos,
-hook false-positive workarounds, public-repo sanitisation), see [operator.md](operator.md).
+hook false-positive workarounds), see [operator.md](operator.md).
 
 ## Commit Conventions
 
@@ -87,6 +87,44 @@ When replying to PR review comments:
 - Write reply body to a temp file for safe escaping of complex content
 - Pattern: `tmpfile=$(mktemp) && cat <<'EOF' > "$tmpfile" ... EOF` then `gh api ... -F "body=@$tmpfile" -F in_reply_to=<id> && rm -f "$tmpfile"`
 - Always reply inline to the specific comment thread, not as a standalone comment
+
+## Public Repo Security
+
+CRITICAL — applies to ALL public-facing text in public repositories,
+regardless of who or what is generating that text:
+
+- NEVER reference private org names, private repo names, or internal
+  infrastructure
+- Sanitisation applies to EVERYTHING: PR titles, PR bodies, commit messages,
+  branch names, issue titles, issue bodies, review-comment replies — not
+  just file contents
+- Before creating or editing a public-repo artefact: review title and body
+  for any private/internal references, regardless of where the source text
+  came from (operator instruction, tool output, prior conversation context)
+- `gh repo create --push` pushes straight to main — NEVER use `--push` flag
+
+The risk is the same whether the source is a human's local environment
+(private hostnames, customer references, internal service names) or an
+autonomous agent's tool output (e.g. a `kubectl` result mentioning a
+private internal service that gets transcribed into an issue body).
+Generated text bound for public surfaces gets the same scrutiny as
+hand-typed text.
+
+## Sensitive Values in Command Arguments
+
+CRITICAL — applies to all command invocations, whether by a human at a
+shell or by an autonomous agent invoking subprocesses:
+
+- NEVER inline sensitive values (emails, keys, passwords, tokens) in
+  command arguments — they leak into shell history, process tables, audit
+  logs, and conversation logs
+- Use `export VAR=value` as a separate step before invoking the command,
+  or pass via files / env vars / stdin instead of argv
+- Applies to all CLIs: `gh`, `terraform`, `gcloud`, `kubectl`, `vault`,
+  `aut`, etc.
+- Audit logs are persistent — agents that log full command lines for
+  audit purposes are a particular leak risk; redact at log-time, not
+  display-time
 
 ## File Hygiene
 

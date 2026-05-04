@@ -38,37 +38,24 @@ Replies section of `SKILL.md`, but the *reason* (hook false positives) is
 operator-specific. Autonomous agents have different (or no) hook layers and
 use the temp-file pattern for shell-escaping reasons instead.
 
-## Public Repo Security
-
-CRITICAL — applies to ALL public-facing text in public repositories:
-
-- NEVER reference private org names, private repo names, or internal
-  infrastructure
-- Sanitization applies to EVERYTHING: PR titles, PR bodies, commit messages,
-  branch names — not just file contents
-- Before creating a PR on a public repo: review title and body for any
-  private/internal references
-- `gh repo create --push` pushes straight to main — NEVER use `--push` flag
-
-These rules exist because the operator's local environment may contain
-private context (org names, internal hostnames, customer references) that
-must not leak into public-facing text. Autonomous agents have controlled
-inputs and a separate redaction layer — see `orchestrator.md` for the
-agent-side equivalents.
-
-## Sensitive Values in Command Arguments
-
-- NEVER inline sensitive values (emails, keys, passwords) in command
-  arguments — they leak into shell history, process tables, and conversation
-  logs.
-- Use `export VAR=value` as a separate step before invoking the command, or
-  prompt the operator to set the env var themselves.
-- Applies to all CLIs: `gh`, `terraform`, `gcloud`, `kubectl`, etc.
-
 ## Anti-Patterns (operator-only)
 
 - Adding Claude co-author to private-repo commits
 - Bypassing the `no-coauthor-private.sh` hook on visibility=unknown
-- Inlining sensitive values in command arguments
-- Pushing private content (private org / repo / hostname references) into
-  public PR titles, bodies, or commit messages
+
+## Universal Rules That Used To Live Here
+
+The following rules previously lived in this file but were promoted to the
+universal `SKILL.md` after a Copilot review on dotfiles PR #98 noted that
+they apply equally to autonomous agents:
+
+- **Public Repo Security** — sanitisation of public-repo artefacts now
+  lives in `SKILL.md`. Generated text from any source (operator, tool
+  output, prior conversation) gets the same scrutiny.
+- **Sensitive Values in Command Arguments** — secret-handling in argv now
+  lives in `SKILL.md`. Audit-log leakage applies to agents as much as
+  shell history applies to humans.
+
+If you find yourself wanting to put a "this applies to humans only" rule
+in this file, sense-check whether an autonomous agent could trigger the
+same failure mode. If yes, the rule belongs in `SKILL.md`.

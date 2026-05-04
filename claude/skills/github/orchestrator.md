@@ -35,25 +35,50 @@ orchestrator's allowlist before invoking the underlying tool.
 - Command lines logged for audit purposes must be token-redacted at log
   time, not at display time.
 
-## Mutation Gating — Explicit Confirmation
+## Write Operations — Operator Intent Required (Universal Layer)
 
-State-change mutations require explicit confirmation in the operator's
-most recent message:
+Every write operation must reflect intent in the operator's most recent
+message. The user's request itself is the consent for that operation —
+e.g. "Chips, file an issue against bridge titled X" is sufficient consent
+to create the issue, no separate confirm step needed.
 
-- Closing or reopening an issue
-- Marking a PR ready for review (already universally forbidden by
-  `SKILL.md`, but reinforced here)
-- Pushing code, even to a feature branch
-- Resolving a review thread
-- Editing or deleting issue / PR / comment content
+Applies to ALL writes without exception: issue create / comment / edit,
+PR create / comment / review-reply, label add, milestone change, etc.
 
 Rules:
 
-- Don't infer consent from earlier conversation.
+- Don't infer write consent from earlier conversation. The relevant
+  message is the most recent operator turn.
+- Don't broaden scope ("close all open issues") without explicit
+  confirmation on each target — a literal request is per-target consent;
+  set-quantified requests are not.
 - Ambiguity = ask, don't act.
-- A separate `confirm` boolean (extracted from the operator's words, not
-  auto-filled) is the preferred shape for tool input schemas where
-  applicable.
+
+If the operator's most recent message does not literally describe the
+write you're considering, refuse and ask.
+
+## High-Risk Mutations — Additional Confirmation Required
+
+Even when the operator's most recent message describes the action,
+high-risk mutations require a separate confirmation field/utterance
+because the consequences are unrecoverable, compound, or affect other
+people's expectations:
+
+- Closing or reopening an issue
+- Pushing code (even to a feature branch the orchestrator has been
+  working on)
+- Resolving a review thread
+- Editing or deleting issue / PR / comment content already published
+- Calling `gh pr ready` (also universally forbidden in `SKILL.md`) —
+  refuse outright
+- Calling `gh pr merge` (also universally forbidden in `SKILL.md`) —
+  refuse outright
+
+For tools that support it, prefer a `confirm` boolean in the input
+schema that the persona must extract from the operator's words (not
+auto-fill). For tools listed as "refuse outright", the persona must
+not register them as callable at all, regardless of operator
+confirmation.
 
 ## Copilot Review Threads
 

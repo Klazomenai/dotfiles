@@ -98,9 +98,11 @@ regardless of who or what is generating that text:
 - Sanitisation applies to EVERYTHING: PR titles, PR bodies, commit messages,
   branch names, issue titles, issue bodies, review-comment replies — not
   just file contents
-- Before creating or editing a public-repo artefact: review title and body
-  for any private/internal references, regardless of where the source text
-  came from (operator instruction, tool output, prior conversation context)
+- Before creating or editing a public-repo artefact: review the artefact in
+  full — every surface listed above (PR title, PR body, commit message,
+  branch name, issue title, issue body, review-comment reply) for any
+  private/internal references, regardless of where the source text came
+  from (operator instruction, tool output, prior conversation context)
 - `gh repo create --push` pushes straight to main — NEVER use `--push` flag
 
 The risk is the same whether the source is a human's local environment

@@ -57,6 +57,15 @@ Rules:
 If the operator's most recent message does not literally describe the
 write you're considering, refuse and ask.
 
+**Pending-confirmation exception**: when a high-risk mutation (see next
+section) is awaiting a separate confirmation, the literal-description
+requirement is satisfied by the *prior* operator message that proposed
+the action — the confirmation message itself does not need to repeat the
+description. Example sequence: operator says "Chips, close issue #99" →
+orchestrator asks "confirm close of issue #99?" → operator says "yes".
+The "yes" turn satisfies the universal rule via the prior turn that
+proposed the close.
+
 ## High-Risk Mutations — Additional Confirmation Required
 
 Even when the operator's most recent message describes the action,
@@ -85,8 +94,10 @@ confirmation.
 The universal Copilot Review Workflow in `SKILL.md` applies, with an
 additional gate:
 
-- NEVER autonomously resolve Copilot review threads. Always reply with a
-  fix-commit reference; the operator resolves.
+- NEVER autonomously resolve Copilot review threads. Reply per the
+  universal workflow in `SKILL.md` (citing a fix-commit SHA when changes
+  were made; disagree-only replies are valid without a SHA); the operator
+  resolves the thread.
 - "Apply all suggestions" is not a valid action without explicit operator
   consent on each comment.
 

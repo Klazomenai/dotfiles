@@ -1,0 +1,23 @@
+name: lint-rule-duplication
+
+on:
+  pull_request:
+    paths:
+      - "claude/CLAUDE.md"
+      - "claude/hooks/**"
+      - "claude/settings.json"
+      - "claude/skills/**"
+      - "claude/profiles/**"
+      - "claude/lint/**"
+      - ".github/workflows/lint-rule-duplication.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan for cross-layer rule duplication
+        run: bash claude/lint/check-rule-duplication.sh

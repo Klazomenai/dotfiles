@@ -5,13 +5,20 @@ description: Git and GitHub workflow guidance, including commits, branches, PRs,
 
 # Git + GitHub Skill
 
+This skill encodes the universal git + GitHub workflow rules — they apply
+wherever this skill is loaded, including by autonomous agents that vendor
+or link this file. Operator-specific concerns (Claude co-author handling on
+private repos, hook UX) live in `claude/CLAUDE.md`. Agent-specific
+constraints (allowlist enforcement, mutation gating, no-autonomous-merge)
+live in `claude/profiles/` for orchestrator consumers — Claude Code never
+loads that directory.
+
 ## Commit Conventions
 
 - Conventional commits format: `<type>(scope): description`
 - Types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `ci`, `perf`, `security`
 - Signed commits required: always use `--gpg-sign`
 - Use `Refs #N` in commit body — NEVER `Closes #N`, `Fixes #N`, or `Resolves #N` (closing is a merge-time decision)
-- NO Claude co-author line on private repos — check repo visibility with `gh repo view --json isPrivate -q '.isPrivate'` before committing
 - NEVER amend commits or force-push — stack separate signed commits, squash on merge
 - Commit emoji prefixes (in commit message, not branch): ✨ feat | 🐛 fix | 📝 docs | ♻️ refactor | 🧪 test | ⚙️ chore | 🔐 security | 🏗️ ci | ⚡ perf
 
@@ -20,7 +27,7 @@ description: Git and GitHub workflow guidance, including commits, branches, PRs,
 - NEVER push to "main" or default branch — NO EXCEPTIONS
 - NEVER create "master" branch
 - Naming: `<type>/<issue>-<description>` e.g. `feat/595-jaeger-tracing`, `fix/784-terraform-exit-code`
-- Types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `security`, `spike`
+- Types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `ci`, `security`, `spike`
 - Base branch: main | Merge style: squash merge | Delete branch after merge
 - No emojis in branch names
 
@@ -83,12 +90,47 @@ When replying to PR review comments:
 
 ## Public Repo Security
 
-CRITICAL — applies to ALL public-facing text in public repositories:
+CRITICAL — applies to ALL public-facing text in public repositories,
+regardless of who or what is generating that text:
 
-- NEVER reference private org names, private repo names, or internal infrastructure
-- Sanitization applies to EVERYTHING: PR titles, PR bodies, commit messages, branch names — not just file contents
-- Before creating a PR on a public repo: review title and body for any private/internal references
+- NEVER reference private org names, private repo names, or internal
+  infrastructure
+- Sanitisation applies to EVERYTHING: PR titles, PR bodies, commit messages,
+  branch names, issue titles, issue bodies, review-comment replies — not
+  just file contents
+- Before creating or editing a public-repo artefact: review the artefact in
+  full — every surface listed above (PR title, PR body, commit message,
+  branch name, issue title, issue body, review-comment reply) for any
+  private/internal references, regardless of where the source text came
+  from (operator instruction, tool output, prior conversation context)
 - `gh repo create --push` pushes straight to main — NEVER use `--push` flag
+
+The risk is the same whether the source is a human's local environment
+(private hostnames, customer references, internal service names) or an
+autonomous agent's tool output (e.g. a `kubectl` result mentioning a
+private internal service that gets transcribed into an issue body).
+Generated text bound for public surfaces gets the same scrutiny as
+hand-typed text.
+
+## Sensitive Values in Command Arguments
+
+CRITICAL — applies to all command invocations, whether by a human at a
+shell or by an autonomous agent invoking subprocesses:
+
+- NEVER inline sensitive values (emails, keys, passwords, tokens) in
+  command arguments — they leak into shell history, process tables, audit
+  logs, and conversation logs
+- Set env vars out-of-band (login env, restricted-perm `.env` file, secrets
+  manager); pass via file paths (`--config-file`, `--credentials-file`); or
+  pass via stdin (`--var-from-stdin`)
+- Don't recommend any pattern where the secret value appears in a logged
+  command line — `export VAR=value` typed at a shell still ends up in
+  history; prefer mechanisms that never put the value in argv at all
+- Applies to all CLIs: `gh`, `terraform`, `gcloud`, `kubectl`, `vault`,
+  `aut`, etc.
+- Audit logs are persistent — agents that log full command lines for
+  audit purposes are a particular leak risk; redact at log-time, not
+  display-time
 
 ## File Hygiene
 
@@ -103,7 +145,6 @@ CRITICAL — applies to ALL public-facing text in public repositories:
 - Pushing directly to main or default branch
 - Creating "master" branches
 - Using `Closes #N`, `Fixes #N`, or `Resolves #N` in commit messages (use `Refs #N`)
-- Adding Claude co-author to private repo commits
 - Using `gh pr merge` or `gh pr ready` (merging is a human decision)
 - Creating non-draft PRs
 - Committing secrets or credentials

@@ -1,0 +1,20 @@
+name: lint-skill-structure
+
+on:
+  pull_request:
+    paths:
+      - "claude/skills/**"
+      - "claude/profiles/**"
+      - "scripts/check-skill-structure.sh"
+      - ".github/workflows/lint-skill-structure.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run L0 skill structure fixture
+        run: bash scripts/check-skill-structure.sh

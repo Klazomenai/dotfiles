@@ -1,4 +1,4 @@
-.PHONY: help install-claude bin-version-check bin-paths-check all-checks
+.PHONY: help install-claude bin-version-check bin-paths-check check-skills all-checks
 
 # Default target
 .DEFAULT_GOAL := help
@@ -163,6 +163,11 @@ install-claude: ## Symlink Claude Code configuration to ~/.claude
 	@ln -sfn "$(CURDIR)/claude/skills" "$(HOME)/.claude/skills"
 	@printf "$(COLOR_GREEN)✅ Claude Code configuration linked to $(HOME)/.claude$(COLOR_RESET)\n"
 
-all-checks: bin-paths-check bin-version-check ## Run all validation checks
+check-skills: ## Run L0 static-structure check on claude/skills/ + claude/profiles/
+	@echo "🔍 Checking skill + profile directory structure..."
+	@bash scripts/check-skill-structure.sh
+	@printf "$(COLOR_GREEN)✅ Skill structure verified$(COLOR_RESET)\n"
+
+all-checks: bin-paths-check bin-version-check check-skills ## Run all validation checks
 	@echo ""
 	@printf "$(COLOR_GREEN)✅ All checks passed!$(COLOR_RESET)\n"

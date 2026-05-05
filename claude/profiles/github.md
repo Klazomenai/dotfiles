@@ -1,6 +1,6 @@
 # Agent Operating Rules — Git + GitHub Workflow
 
-This file is the github-specific agent profile addendum. It is loaded
+This file is the GitHub-specific agent profile addendum. It is loaded
 alongside `_universal.md` for any persona that consumes the `github`
 skill.
 
@@ -11,7 +11,7 @@ Orchestrators (e.g. `klazomenai/bridge`) fetch this file by path at boot.
 The universal workflow rules in `claude/skills/github/SKILL.md` apply to
 both human Claude Code users and autonomous agents. The cross-cutting
 agent rules in `claude/profiles/_universal.md` apply to every persona
-regardless of skill. The rules below are the github-specific additions
+regardless of skill. The rules below are the GitHub-specific additions
 for autonomous agents.
 
 ## PR Lifecycle Gates

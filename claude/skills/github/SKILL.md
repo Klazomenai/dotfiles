@@ -121,8 +121,10 @@ shell or by an autonomous agent invoking subprocesses:
   command arguments — they leak into shell history, process tables, audit
   logs, and conversation logs
 - Set env vars out-of-band (login env, restricted-perm `.env` file, secrets
-  manager); pass via file paths (`--config-file`, `--credentials-file`); or
-  pass via stdin (`--var-from-stdin`)
+  manager); pass via file paths (`gh auth login --with-token < tokenfile`,
+  `kubectl create secret generic --from-file=key=/dev/stdin`); or pipe via
+  stdin where the tool supports it (`docker login --password-stdin`,
+  `helm registry login --password-stdin`)
 - Don't recommend any pattern where the secret value appears in a logged
   command line — `export VAR=value` typed at a shell still ends up in
   history; prefer mechanisms that never put the value in argv at all

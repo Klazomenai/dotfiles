@@ -58,25 +58,33 @@ info() {
 # ------------------------------------------------------------------
 # Check 1 — every claude/skills/<name>/ has a SKILL.md
 # ------------------------------------------------------------------
-# Pre-flight: claude/skills/ must exist and contain at least one
-# directory. Without this, an unmatched glob (`claude/skills/*/`) stays
-# literal in POSIX sh and the loop body silently never executes.
+# Pre-flight: claude/skills/ must exist. Beyond that, we enumerate
+# child directories via a POSIX glob (`claude/skills/*/`) — `find` with
+# -mindepth/-maxdepth is GNU/BSD-only, not POSIX. The `[ -d "$dir" ]`
+# guard handles the unmatched-glob-stays-literal case (POSIX sh leaves
+# the pattern unchanged when no files match), and `found_any` catches
+# the empty-directory case explicitly so a deleted skills/ still fails
+# CI rather than silently passing.
 info "Checking claude/skills/*/SKILL.md presence..."
 [ -d "claude/skills" ] || fail "claude/skills/ directory does not exist"
-skill_dirs=$(find claude/skills -mindepth 1 -maxdepth 1 -type d)
-[ -n "$skill_dirs" ] || fail "claude/skills/ contains no skill directories"
 
 # Collect ALL missing SKILL.md files first, then fail once with the full
 # list — operator-friendly: see every problem in a single run rather
-# than fix-one-rerun loops. (`fail` itself still exits on first call;
-# we just defer it until after the loop.)
+# than fix-one-rerun loops.
 missing_skills=""
-for dir in $skill_dirs; do
-    if [ ! -f "${dir}/SKILL.md" ]; then
-        missing_skills="${missing_skills}${dir}/SKILL.md
+found_any=0
+for dir in claude/skills/*/; do
+    [ -d "$dir" ] || continue
+    found_any=1
+    skill_md="${dir}SKILL.md"
+    if [ ! -f "$skill_md" ]; then
+        missing_skills="${missing_skills}${skill_md}
 "
     fi
 done
+
+[ "$found_any" -eq 1 ] || fail "claude/skills/ contains no skill directories"
+
 if [ -n "$missing_skills" ]; then
     fail "one or more skill directories are missing SKILL.md" "missing files:
 ${missing_skills}"

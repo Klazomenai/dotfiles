@@ -30,11 +30,20 @@ REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 cd "${REPO_ROOT}"
 
 # Output helpers — surface as GitHub Actions annotations when possible.
+# fail emits a single-line ::error:: annotation under GHA so the workflow
+# command parses correctly. Multi-line context (file lists, etc.) goes to
+# stderr separately to preserve the annotation while still surfacing
+# diagnostic data in the run log.
 fail() {
     if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
         printf '::error::%s\n' "$1"
     else
         printf 'FAIL: %s\n' "$1" >&2
+    fi
+    # Optional second argument: multi-line diagnostic to print to stderr
+    # (e.g. list of violating files) without breaking the annotation.
+    if [ "$#" -ge 2 ] && [ -n "$2" ]; then
+        printf '%s\n' "$2" >&2
     fi
     exit 1
 }
@@ -74,12 +83,18 @@ Audit Trail
 Refusal Policy
 Anti-Patterns"
 
-printf '%s\n' "$universal_required" | while IFS= read -r section; do
+# Loop over required sections in the parent shell (no pipeline subshell —
+# `printf | while` runs in a subshell on POSIX sh, so `fail`/`exit` would
+# only kill the subshell and the outer script would silently succeed).
+# Here-doc redirect keeps the loop in the parent shell.
+while IFS= read -r section; do
     [ -n "$section" ] || continue
-    if ! grep -qF "## ${section}" "${UNIVERSAL_PATH}"; then
+    if ! grep -qxF "## ${section}" "${UNIVERSAL_PATH}"; then
         fail "${UNIVERSAL_PATH} missing required section: ## ${section}"
     fi
-done
+done <<EOF
+${universal_required}
+EOF
 
 # ------------------------------------------------------------------
 # Check 3 — github.md required H2 sections
@@ -94,20 +109,27 @@ Copilot Review Threads
 Branch Operations
 Anti-Patterns"
 
-printf '%s\n' "$github_profile_required" | while IFS= read -r section; do
+while IFS= read -r section; do
     [ -n "$section" ] || continue
-    if ! grep -qF "## ${section}" "${GITHUB_PROFILE_PATH}"; then
+    if ! grep -qxF "## ${section}" "${GITHUB_PROFILE_PATH}"; then
         fail "${GITHUB_PROFILE_PATH} missing required section: ## ${section}"
     fi
-done
+done <<EOF
+${github_profile_required}
+EOF
 
 # ------------------------------------------------------------------
 # Check 4 — no SKILL.md references _universal.md (negative claim)
 # ------------------------------------------------------------------
+# Restricted to SKILL.md files specifically. Future README.md or notes
+# under a skill directory may legitimately mention _universal.md (e.g.
+# a "this skill has no profile addendum" note); only SKILL.md must
+# avoid the link, since those are the files Claude Code parses for
+# the auto-loaded reference graph.
 info "Checking no SKILL.md references _universal.md..."
-violators=$(grep -rlF "_universal.md" claude/skills/ 2>/dev/null || true)
+violators=$(find claude/skills -type f -name SKILL.md -exec grep -lF "_universal.md" {} + 2>/dev/null || true)
 if [ -n "$violators" ]; then
-    fail "claude/skills/ files reference _universal.md (would auto-load orchestrator content for human Claude Code users — see #99 architecture decision):
+    fail "claude/skills/ SKILL.md files reference _universal.md (would auto-load orchestrator content for human Claude Code users — see #99 architecture decision)" "violating files:
 ${violators}"
 fi
 

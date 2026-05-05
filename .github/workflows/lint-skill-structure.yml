@@ -17,4 +17,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run L0 skill structure fixture
-        run: bash scripts/check-skill-structure.sh
+        run: sh scripts/check-skill-structure.sh

@@ -165,7 +165,7 @@ install-claude: ## Symlink Claude Code configuration to ~/.claude
 
 check-skills: ## Run L0 static-structure check on claude/skills/ + claude/profiles/
 	@echo "🔍 Checking skill + profile directory structure..."
-	@bash scripts/check-skill-structure.sh
+	@sh scripts/check-skill-structure.sh
 	@printf "$(COLOR_GREEN)✅ Skill structure verified$(COLOR_RESET)\n"
 
 all-checks: bin-paths-check bin-version-check check-skills ## Run all validation checks

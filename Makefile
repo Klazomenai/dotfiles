@@ -1,4 +1,4 @@
-.PHONY: help install-claude bin-version-check bin-paths-check all-checks
+.PHONY: help install-claude bin-version-check bin-paths-check check-skills all-checks
 
 # Default target
 .DEFAULT_GOAL := help
@@ -25,7 +25,7 @@ help: ## Display this help message
 	@grep -E '^install-.*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(COLOR_BLUE)%-25s$(COLOR_RESET) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "✅ VALIDATION:"
-	@grep -E '^(bin-version-check|bin-paths-check|all-checks):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(COLOR_BLUE)%-25s$(COLOR_RESET) %s\n", $$1, $$2}'
+	@grep -E '^(bin-version-check|bin-paths-check|check-skills|all-checks):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(COLOR_BLUE)%-25s$(COLOR_RESET) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Fair seas and following winds ⚓🌊⛵"
 	@echo ""
@@ -163,6 +163,11 @@ install-claude: ## Symlink Claude Code configuration to ~/.claude
 	@ln -sfn "$(CURDIR)/claude/skills" "$(HOME)/.claude/skills"
 	@printf "$(COLOR_GREEN)✅ Claude Code configuration linked to $(HOME)/.claude$(COLOR_RESET)\n"
 
-all-checks: bin-paths-check bin-version-check ## Run all validation checks
+check-skills: ## Run L0 static-structure check on claude/skills/ + claude/profiles/
+	@echo "🔍 Checking skill + profile directory structure..."
+	@sh scripts/check-skill-structure.sh
+	@printf "$(COLOR_GREEN)✅ Skill structure verified$(COLOR_RESET)\n"
+
+all-checks: bin-paths-check bin-version-check check-skills ## Run all validation checks
 	@echo ""
 	@printf "$(COLOR_GREEN)✅ All checks passed!$(COLOR_RESET)\n"

@@ -47,7 +47,7 @@ loads that directory.
   ## Test plan
   - [ ] Bulleted checklist of testing TODOs
   ```
-- Use temp files for PR bodies to avoid hook false positives: write body to file, then `gh pr create --body-file path/to/file --draft ...`. (Note: `--body-file <path>` is the `gh pr create` flag; the `-F body=@file` form-field syntax is for `gh api` calls only — see PR Review Replies below.)
+- Write PR bodies to temp files for safe escaping of complex content: `gh pr create --body-file path/to/file --draft ...`. (Note: `--body-file <path>` is the `gh pr create` flag; the `-F body=@file` form-field syntax is for `gh api` calls only — see PR Review Replies below.)
 
 ## Issue Conventions
 
@@ -84,7 +84,7 @@ Rules:
 
 When replying to PR review comments:
 
-- Write reply body to a temp file first to avoid hook false positives on `gh api` body content
+- Write reply body to a temp file for safe escaping of complex content
 - Pattern: `tmpfile=$(mktemp) && cat <<'EOF' > "$tmpfile" ... EOF` then `gh api ... -F "body=@$tmpfile" -F in_reply_to=<id> && rm -f "$tmpfile"`
 - Always reply inline to the specific comment thread, not as a standalone comment
 

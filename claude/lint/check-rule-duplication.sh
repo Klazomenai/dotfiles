@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # check-rule-duplication.sh
 #
-# Scans for load-bearing rule strings appearing in 3+ files across the
-# four rule layers — CLAUDE.md (behaviour), hooks/ + settings.json
-# (enforcement), skills/ (workflow knowledge), profiles/ (agent
-# constraints). Warns (does not fail CI).
+# Scans for load-bearing rule strings appearing in 3+ files across four
+# conceptual rule layers (scanned as five roots — hooks/ and
+# settings.json are both enforcement):
+#   - claude/CLAUDE.md           — behaviour
+#   - claude/hooks/              — enforcement (PreToolUse scripts)
+#   - claude/settings.json       — enforcement (permission rules)
+#   - claude/skills/             — workflow knowledge
+#   - claude/profiles/           — agent constraints
+# Warns (does not fail CI).
 #
 # The dedup pass (Phase 3 of the skills-architecture redesign,
 # klazomenai/dotfiles#99) will gradually move each duplicated rule
@@ -64,7 +69,7 @@ for pattern in "${PATTERNS[@]}"; do
     done
 
     if [[ ${#files_matching[@]} -ge 3 ]]; then
-        echo "::warning ::Rule pattern \"$pattern\" appears in ${#files_matching[@]} files (3+ duplication):"
+        echo "::warning::Rule pattern \"$pattern\" appears in ${#files_matching[@]} files (3+ duplication):"
         for f in "${files_matching[@]}"; do
             echo "  - $f"
         done

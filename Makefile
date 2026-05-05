@@ -25,7 +25,7 @@ help: ## Display this help message
 	@grep -E '^install-.*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(COLOR_BLUE)%-25s$(COLOR_RESET) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "✅ VALIDATION:"
-	@grep -E '^(bin-version-check|bin-paths-check|all-checks):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(COLOR_BLUE)%-25s$(COLOR_RESET) %s\n", $$1, $$2}'
+	@grep -E '^(bin-version-check|bin-paths-check|check-skills|all-checks):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(COLOR_BLUE)%-25s$(COLOR_RESET) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Fair seas and following winds ⚓🌊⛵"
 	@echo ""

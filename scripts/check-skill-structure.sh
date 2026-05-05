@@ -24,9 +24,12 @@
 
 set -eu
 
-# Locate repo root (script lives at <repo>/scripts/).
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
+# Locate repo root (script lives at <repo>/scripts/). The `$0` value is
+# the script's own path; it cannot start with `-`, so the `--` end-of-
+# options marker isn't needed and is dropped here for portability with
+# non-GNU userlands where `dirname --` / `cd --` may not be supported.
+SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
+REPO_ROOT=$(CDPATH= cd "${SCRIPT_DIR}/.." && pwd)
 cd "${REPO_ROOT}"
 
 # Output helpers — surface as GitHub Actions annotations when possible.
@@ -55,16 +58,29 @@ info() {
 # ------------------------------------------------------------------
 # Check 1 — every claude/skills/<name>/ has a SKILL.md
 # ------------------------------------------------------------------
+# Pre-flight: claude/skills/ must exist and contain at least one
+# directory. Without this, an unmatched glob (`claude/skills/*/`) stays
+# literal in POSIX sh and the loop body silently never executes.
 info "Checking claude/skills/*/SKILL.md presence..."
-missing=0
-for dir in claude/skills/*/; do
-    [ -d "$dir" ] || continue
-    if [ ! -f "${dir}SKILL.md" ]; then
-        fail "skill directory ${dir} is missing SKILL.md"
-        missing=$((missing + 1))
+[ -d "claude/skills" ] || fail "claude/skills/ directory does not exist"
+skill_dirs=$(find claude/skills -mindepth 1 -maxdepth 1 -type d)
+[ -n "$skill_dirs" ] || fail "claude/skills/ contains no skill directories"
+
+# Collect ALL missing SKILL.md files first, then fail once with the full
+# list — operator-friendly: see every problem in a single run rather
+# than fix-one-rerun loops. (`fail` itself still exits on first call;
+# we just defer it until after the loop.)
+missing_skills=""
+for dir in $skill_dirs; do
+    if [ ! -f "${dir}/SKILL.md" ]; then
+        missing_skills="${missing_skills}${dir}/SKILL.md
+"
     fi
 done
-[ "$missing" -eq 0 ] || exit 1
+if [ -n "$missing_skills" ]; then
+    fail "one or more skill directories are missing SKILL.md" "missing files:
+${missing_skills}"
+fi
 
 # ------------------------------------------------------------------
 # Check 2 — _universal.md required H2 sections
@@ -126,8 +142,22 @@ EOF
 # a "this skill has no profile addendum" note); only SKILL.md must
 # avoid the link, since those are the files Claude Code parses for
 # the auto-loaded reference graph.
+#
+# Per-file grep -q (in an `if` clause, so its non-zero "no match" exit
+# is consumed by the conditional rather than tripping `set -e`).
+# `find` errors still propagate naturally — only the grep "no match"
+# case is consumed.
 info "Checking no SKILL.md references _universal.md..."
-violators=$(find claude/skills -type f -name SKILL.md -exec grep -lF "_universal.md" {} + 2>/dev/null || true)
+violators=""
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    if grep -qF "_universal.md" "$f"; then
+        violators="${violators}${f}
+"
+    fi
+done <<EOF
+$(find claude/skills -type f -name SKILL.md)
+EOF
 if [ -n "$violators" ]; then
     fail "claude/skills/ SKILL.md files reference _universal.md (would auto-load orchestrator content for human Claude Code users — see #99 architecture decision)" "violating files:
 ${violators}"

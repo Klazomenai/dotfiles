@@ -37,8 +37,7 @@ vault tokens. Vault-specific reinforcement:
 - Never echo, quote, or paste a Vault token value (any type — root,
   service, K8s-auth, AppRole) in your response, even if it appears
   in tool output. Refer to tokens indirectly by their accessor or
-  context ("the token returned by `generate-root -decode`", "the
-  K8s auth token issued to ServiceAccount X").
+  context (the token returned by the `vault operator generate-root -decode` step, the K8s auth token issued to a named ServiceAccount, and so on).
 - Recovery key shards, unseal keys, and the generate-root OTP are
   treated the same as tokens — never quote, never paste, never
   enumerate.
@@ -48,17 +47,17 @@ vault tokens. Vault-specific reinforcement:
 - `vault token revoke -self` is refused outright in autonomous
   mode — it ends the current session credential and breaks any
   in-flight operation. If the operator wants the current session
-  token revoked, they invoke `vault token revoke -self` in their
-  own session, or revoke by accessor (`vault token revoke
-  -accessor <accessor>`) from any session — neither path requires
-  pasting the token value on a command line.
-- `vault token revoke <token-id>` (positional form) and `vault token
-  revoke -accessor <accessor>` (accessor form) are both high-risk
-  mutations per `_universal.md` — downstream services authenticated
-  with that token lose access. Per-target confirmation applies to
-  each form; the CLI does not auto-detect between them, so the
-  operator's literal description must name which form is being
-  invoked.
+  token revoked, they invoke the self form in their own session,
+  or invoke the accessor form
+  `vault token revoke -accessor <accessor>` from any session.
+  Neither path requires pasting the token value on a command line.
+- The positional form `vault token revoke <token-id>` and the
+  accessor form `vault token revoke -accessor <accessor>` are
+  both high-risk mutations per `_universal.md` — downstream
+  services authenticated with that token lose access. Per-target
+  confirmation applies to each form; the CLI does not auto-detect
+  between them, so the operator's literal description must name
+  which form is being invoked.
 - `vault token create` without an explicit `-ttl` is refused —
   unbounded non-root tokens defeat the lifecycle the SKILL.md
   prescribes.
@@ -77,17 +76,17 @@ mandatory before any policy mutation:
 - `vault policy delete <name>` is a high-risk mutation —
   downstream services with that policy attached lose access.
   Per-target confirmation applies.
-- K8s auth role writes (`vault write auth/kubernetes/role/<name>
-  bound_service_account_names=... bound_service_account_namespaces=...
-  policies=... ttl=...`) are policy-equivalent mutations: same review
-  requirement. Surface the bound ServiceAccount name, namespace,
-  policies, and TTL before invoking.
-- AppRole and other auth-method mutations (`vault write
-  auth/approle/role/<name> ...`) follow the same rule.
-- Audit device mutations (`vault audit enable` / `vault audit
-  disable`) require per-target confirmation regardless of operator
-  request — disabling an audit device breaks compliance posture and
-  loses the historical write trail.
+- K8s auth role writes via `vault write auth/kubernetes/role/<name>`
+  (passing `bound_service_account_names`, `bound_service_account_namespaces`,
+  `policies`, and `ttl` fields) are policy-equivalent mutations:
+  same review requirement. Surface the bound ServiceAccount name,
+  namespace, policies, and TTL before invoking.
+- AppRole and other auth-method mutations via
+  `vault write auth/approle/role/<name>` follow the same rule.
+- Audit device mutations (`vault audit enable` or `vault audit disable`)
+  require per-target confirmation regardless of operator request —
+  disabling an audit device breaks compliance posture and loses the
+  historical write trail.
 
 ## Secret Write Provenance
 
@@ -131,5 +130,5 @@ secret writes. Vault-specific reinforcement:
   tool output without operator review
 - Auto-rotating a Vault-stored secret
 - Treating `vault operator step-down` as a routine maintenance step
-- Attempting KMS-connectivity diagnosis or recovery when `vault
-  status` reports sealed
+- Attempting KMS-connectivity diagnosis or recovery when
+  `vault status` reports sealed

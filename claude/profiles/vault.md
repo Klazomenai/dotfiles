@@ -47,9 +47,11 @@ vault tokens. Vault-specific reinforcement:
   carry the value back to the operator.
 - `vault token revoke -self` is refused outright in autonomous
   mode — it ends the current session credential and breaks any
-  in-flight operation. If the operator wants the current token
-  revoked, they must issue the revoke with the named token
-  argument from their own context.
+  in-flight operation. If the operator wants the current session
+  token revoked, they invoke `vault token revoke -self` in their
+  own session, or revoke by accessor (`vault token revoke
+  -accessor <accessor>`) from any session — neither path requires
+  pasting the token value on a command line.
 - `vault token revoke <token-id>` (positional form) and `vault token
   revoke -accessor <accessor>` (accessor form) are both high-risk
   mutations per `_universal.md` — downstream services authenticated
@@ -97,8 +99,9 @@ secret writes. Vault-specific reinforcement:
   value is sourced from tool output, generated mid-session, or read
   from a file the operator did not explicitly provide.
 - Stdin-fed writes (`vault kv put <path> @-` with a heredoc, or
-  `cat file | vault kv put <path> -`) require the content to match
-  operator-shown text byte-for-byte.
+  `cat file | vault kv put <path> @-`) require the content to match
+  operator-shown text byte-for-byte. The `@/dev/stdin` form
+  (preferred by `claude/skills/vault/SKILL.md`) is equivalent.
 - `vault kv patch` falls under the same provenance rule as `put`.
 - `vault kv delete` and `vault kv metadata delete` are high-risk
   mutations (the metadata delete is unrecoverable); per-target

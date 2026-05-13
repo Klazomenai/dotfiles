@@ -10,7 +10,8 @@
 #   1. Every directory under claude/skills/ contains a SKILL.md
 #   2. claude/profiles/_universal.md exists with the required H2 sections
 #   3. claude/profiles/github.md exists with the required H2 sections
-#   4. No claude/skills/<name>/SKILL.md references _universal.md
+#   4. claude/profiles/security.md exists with the required H2 sections
+#   5. No claude/skills/<name>/SKILL.md references _universal.md
 #      (negative claim — the asymmetric reference graph is deliberate;
 #      Claude Code must not auto-load universal content via a sibling
 #      link from a SKILL.md, since that would pollute human-CC users
@@ -143,7 +144,31 @@ ${github_profile_required}
 EOF
 
 # ------------------------------------------------------------------
-# Check 4 — no SKILL.md references _universal.md (negative claim)
+# Check 4 — security.md required H2 sections
+# ------------------------------------------------------------------
+SECURITY_PROFILE_PATH="claude/profiles/security.md"
+info "Checking ${SECURITY_PROFILE_PATH} sections..."
+[ -f "${SECURITY_PROFILE_PATH}" ] || fail "${SECURITY_PROFILE_PATH} does not exist"
+
+security_profile_required="Fail-Closed Reasoning
+Defense in Depth
+Cryptographic Operations
+Authentication Scope Expansion
+Input Validation Patterns to Refuse
+Secret Handling Reinforcement
+Anti-Patterns"
+
+while IFS= read -r section; do
+    [ -n "$section" ] || continue
+    if ! grep -qxF "## ${section}" "${SECURITY_PROFILE_PATH}"; then
+        fail "${SECURITY_PROFILE_PATH} missing required section: ## ${section}"
+    fi
+done <<EOF
+${security_profile_required}
+EOF
+
+# ------------------------------------------------------------------
+# Check 5 — no SKILL.md references _universal.md (negative claim)
 # ------------------------------------------------------------------
 # Restricted to SKILL.md files specifically. Future README.md or notes
 # under a skill directory may legitimately mention _universal.md (e.g.

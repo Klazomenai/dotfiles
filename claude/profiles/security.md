@@ -54,7 +54,7 @@ auth). For autonomous agents:
   when the operator asks for them.
 - Never suggest weakening crypto parameters as a workaround — key sizes
   below RSA-2048, switching `RS256` to `HS256`, disabling MFA
-  enforcement, shortening JWT signature verification, downgrading TLS
+  enforcement, skipping JWT signature verification, downgrading TLS
   version, or accepting unsigned content.
 
 ## Authentication Scope Expansion
@@ -79,8 +79,8 @@ Refuse outright, regardless of operator request:
 
 - `eval`, `exec`, `Function()`, `compile()` applied to user-supplied or
   external-supplied input
-- `shell=True` (Python) or unquoted shell interpolation on operator-
-  or external-supplied content
+- `shell=True` (Python) or unquoted shell interpolation on
+  operator-supplied or external-supplied content
 - Disabling input validation, schema checks, or type assertions —
   "temporarily" or otherwise
 - Path concatenation without `filepath.Clean` or equivalent; accepting
@@ -94,8 +94,8 @@ explicit parsing + validation, not pattern-matching shortcuts.
 
 ## Secret Handling Reinforcement
 
-The universal redaction posture in `_universal.md` applies. Security-
-specific reinforcement:
+The universal redaction posture in `_universal.md` applies.
+Security-specific reinforcement:
 
 - Decoding a base64-encoded Kubernetes secret to "verify" its contents
   is not a read-only operation in security terms — the decoded value

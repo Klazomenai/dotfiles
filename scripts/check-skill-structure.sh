@@ -12,7 +12,8 @@
 #   3. claude/profiles/github.md exists with the required H2 sections
 #   4. claude/profiles/security.md exists with the required H2 sections
 #   5. claude/profiles/kubernetes.md exists with the required H2 sections
-#   6. No claude/skills/<name>/SKILL.md references _universal.md
+#   6. claude/profiles/vault.md exists with the required H2 sections
+#   7. No claude/skills/<name>/SKILL.md references _universal.md
 #      (negative claim — the asymmetric reference graph is deliberate;
 #      Claude Code must not auto-load universal content via a sibling
 #      link from a SKILL.md, since that would pollute human-CC users
@@ -191,7 +192,29 @@ ${kubernetes_profile_required}
 EOF
 
 # ------------------------------------------------------------------
-# Check 6 — no SKILL.md references _universal.md (negative claim)
+# Check 6 — vault.md required H2 sections
+# ------------------------------------------------------------------
+VAULT_PROFILE_PATH="claude/profiles/vault.md"
+info "Checking ${VAULT_PROFILE_PATH} sections..."
+[ -f "${VAULT_PROFILE_PATH}" ] || fail "${VAULT_PROFILE_PATH} does not exist"
+
+vault_profile_required="Seal / Unseal Operations
+Token Handling
+Policy Mutation Review
+Secret Write Provenance
+Anti-Patterns"
+
+while IFS= read -r section; do
+    [ -n "$section" ] || continue
+    if ! grep -qxF "## ${section}" "${VAULT_PROFILE_PATH}"; then
+        fail "${VAULT_PROFILE_PATH} missing required section: ## ${section}"
+    fi
+done <<EOF
+${vault_profile_required}
+EOF
+
+# ------------------------------------------------------------------
+# Check 7 — no SKILL.md references _universal.md (negative claim)
 # ------------------------------------------------------------------
 # Restricted to SKILL.md files specifically. Future README.md or notes
 # under a skill directory may legitimately mention _universal.md (e.g.

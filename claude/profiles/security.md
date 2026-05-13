@@ -27,9 +27,13 @@ not as an invitation to ask "what does the operator most likely want?"
 
 ## Defense in Depth
 
-The security `SKILL.md` describes the safety-layer architecture (hooks,
-permission deny rules, allowlists, container hardening, fail-closed
-auth). For autonomous agents:
+Defense in depth combines domain-level safety (the patterns in
+`claude/skills/security/SKILL.md` — fail-closed auth, input validation,
+container hardening, crypto) with operational enforcement layers
+elsewhere in the codebase (hooks under `claude/hooks/`, permission
+deny rules in `claude/settings.json`, allowlist enforcement described
+in `_universal.md`). Each layer is load-bearing — none is a backup
+for another:
 
 - Never recommend disabling one safety layer because another covers it.
   Layers are independent and additive by design — removing one weakens
@@ -65,10 +69,10 @@ currently granted:
 - Surface the scope-expansion need to the operator before proposing a
   command. Name the missing scope explicitly (e.g. "this would require
   `admin:org` on the GitHub token").
-- Never invoke `gh auth refresh -s <scope>`, `gcloud auth
-  application-default login`, `kubectl config set-credentials`,
-  `aws sts assume-role` to a wider role, or any other scope-expanding
-  re-authentication autonomously.
+- Never invoke `gh auth refresh -s <scope>`, `gcloud auth login`,
+  `gcloud auth application-default login`, `kubectl config
+  set-credentials`, `aws sts assume-role` to a wider role, or any
+  other scope-expanding re-authentication autonomously.
 - A request that requires elevated scope is a high-risk mutation per
   `_universal.md` — the literal-description and confirmation rules
   apply.

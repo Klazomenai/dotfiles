@@ -11,7 +11,8 @@
 #   2. claude/profiles/_universal.md exists with the required H2 sections
 #   3. claude/profiles/github.md exists with the required H2 sections
 #   4. claude/profiles/security.md exists with the required H2 sections
-#   5. No claude/skills/<name>/SKILL.md references _universal.md
+#   5. claude/profiles/kubernetes.md exists with the required H2 sections
+#   6. No claude/skills/<name>/SKILL.md references _universal.md
 #      (negative claim — the asymmetric reference graph is deliberate;
 #      Claude Code must not auto-load universal content via a sibling
 #      link from a SKILL.md, since that would pollute human-CC users
@@ -168,7 +169,29 @@ ${security_profile_required}
 EOF
 
 # ------------------------------------------------------------------
-# Check 5 — no SKILL.md references _universal.md (negative claim)
+# Check 5 — kubernetes.md required H2 sections
+# ------------------------------------------------------------------
+KUBERNETES_PROFILE_PATH="claude/profiles/kubernetes.md"
+info "Checking ${KUBERNETES_PROFILE_PATH} sections..."
+[ -f "${KUBERNETES_PROFILE_PATH}" ] || fail "${KUBERNETES_PROFILE_PATH} does not exist"
+
+kubernetes_profile_required="Context Pinning
+Namespace Allowlist
+Destructive Command Gating
+Manifest Provenance
+Anti-Patterns"
+
+while IFS= read -r section; do
+    [ -n "$section" ] || continue
+    if ! grep -qxF "## ${section}" "${KUBERNETES_PROFILE_PATH}"; then
+        fail "${KUBERNETES_PROFILE_PATH} missing required section: ## ${section}"
+    fi
+done <<EOF
+${kubernetes_profile_required}
+EOF
+
+# ------------------------------------------------------------------
+# Check 6 — no SKILL.md references _universal.md (negative claim)
 # ------------------------------------------------------------------
 # Restricted to SKILL.md files specifically. Future README.md or notes
 # under a skill directory may legitimately mention _universal.md (e.g.

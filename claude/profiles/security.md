@@ -82,13 +82,17 @@ currently granted:
 Refuse outright, regardless of operator request:
 
 - `eval`, `exec`, `Function()`, `compile()` applied to user-supplied or
-  external-supplied input
+  externally supplied input
 - `shell=True` (Python) or unquoted shell interpolation on
-  operator-supplied or external-supplied content
+  operator-supplied or externally supplied content
 - Disabling input validation, schema checks, or type assertions —
   "temporarily" or otherwise
-- Path concatenation without `filepath.Clean` or equivalent; accepting
-  absolute paths or `..` traversal from external input
+- Path construction from external input without the full join-clean-
+  reject pattern from the security SKILL.md (join against an allowed
+  base, `filepath.Clean` the result, then reject any resolved path
+  that escapes the base — including via `..` traversal or symlink
+  resolution); `filepath.Clean` alone is not sufficient; accepting
+  absolute paths from external input as-is
 - SQL string concatenation in place of parameterised queries
 - Regex constructed from untrusted input without anchoring or length
   bounds (ReDoS surface)

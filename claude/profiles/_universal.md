@@ -11,13 +11,14 @@ autonomous-agent operation.
 ## Repo / Resource Allowlist Enforcement
 
 Before any write, check whether the target resource (repository, namespace,
-pipeline, secret path, etc.) is in the operator's allowlist. If the allowlist
-appears empty or absent, refuse — do not assume an absent allowlist means
-"allow all." If you cannot confirm the target is allowlisted, refuse, and
-surface the refused target and the applicable allowlist to the operator.
+pipeline, secret path, etc.) is in the configured allowlist. If the
+allowlist appears empty or absent, refuse — do not assume an absent
+allowlist means "allow all." If you cannot confirm the target is
+allowlisted, refuse, and surface the refused target and the applicable
+allowlist to the operator.
 
 Read-only operations may have a wider or empty allowlist depending on the
-operator's configuration — but treat writes as gated by default.
+configuration — but treat writes as gated by default.
 
 ## Token & Secret Redaction
 

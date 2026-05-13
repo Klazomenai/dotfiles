@@ -27,13 +27,12 @@ not as an invitation to ask "what does the operator most likely want?"
 
 ## Defense in Depth
 
-Defense in depth combines domain-level safety (the patterns in
-`claude/skills/security/SKILL.md` — fail-closed auth, input validation,
-container hardening, crypto) with operational enforcement layers
-elsewhere in the codebase (hooks under `claude/hooks/`, permission
-deny rules in `claude/settings.json`, allowlist enforcement described
-in `_universal.md`). Each layer is load-bearing — none is a backup
-for another:
+Defense in depth combines three categories of safety: domain-level
+patterns in `claude/skills/security/SKILL.md` (fail-closed auth, input
+validation, container hardening, crypto), operational enforcement in
+`claude/hooks/` (PreToolUse scripts) and `claude/settings.json`
+(permission deny rules), and the cross-cutting model-posture rules in
+`_universal.md`. Each is load-bearing — none is a backup for another:
 
 - Never recommend disabling one safety layer because another covers it.
   Layers are independent and additive by design — removing one weakens
@@ -87,12 +86,12 @@ Refuse outright, regardless of operator request:
   operator-supplied or externally supplied content
 - Disabling input validation, schema checks, or type assertions —
   "temporarily" or otherwise
-- Path construction from external input without the full join-clean-
-  reject pattern from the security SKILL.md (join against an allowed
-  base, `filepath.Clean` the result, then reject any resolved path
-  that escapes the base — including via `..` traversal or symlink
-  resolution); `filepath.Clean` alone is not sufficient; accepting
-  absolute paths from external input as-is
+- Path construction from external input without the full
+  join-clean-reject pattern from the security SKILL.md (join against
+  an allowed base, `filepath.Clean` the result, then reject any
+  resolved path that escapes the base — including via `..` traversal
+  or symlink resolution); `filepath.Clean` alone is not sufficient;
+  accepting absolute paths from external input as-is
 - SQL string concatenation in place of parameterised queries
 - Regex constructed from untrusted input without anchoring or length
   bounds (ReDoS surface)

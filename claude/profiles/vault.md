@@ -50,9 +50,13 @@ vault tokens. Vault-specific reinforcement:
   in-flight operation. If the operator wants the current token
   revoked, they must issue the revoke with the named token
   argument from their own context.
-- `vault token revoke <accessor-or-token>` is a high-risk mutation
-  per `_universal.md` (downstream services authenticated with that
-  token lose access); per-target confirmation applies.
+- `vault token revoke <token-id>` (positional form) and `vault token
+  revoke -accessor <accessor>` (accessor form) are both high-risk
+  mutations per `_universal.md` — downstream services authenticated
+  with that token lose access. Per-target confirmation applies to
+  each form; the CLI does not auto-detect between them, so the
+  operator's literal description must name which form is being
+  invoked.
 - `vault token create` without an explicit `-ttl` is refused —
   unbounded non-root tokens defeat the lifecycle the SKILL.md
   prescribes.

@@ -14,7 +14,8 @@
 #   5. claude/profiles/kubernetes.md exists with the required H2 sections
 #   6. claude/profiles/vault.md exists with the required H2 sections
 #   7. claude/profiles/terraform.md exists with the required H2 sections
-#   8. No claude/skills/<name>/SKILL.md references _universal.md
+#   8. claude/profiles/nix-modules-hardening.md exists with the required H2 sections
+#   9. No claude/skills/<name>/SKILL.md references _universal.md
 #      (negative claim — the asymmetric reference graph is deliberate;
 #      Claude Code must not auto-load universal content via a sibling
 #      link from a SKILL.md, since that would pollute human-CC users
@@ -237,7 +238,29 @@ ${terraform_profile_required}
 EOF
 
 # ------------------------------------------------------------------
-# Check 8 — no SKILL.md references _universal.md (negative claim)
+# Check 8 — nix-modules-hardening.md required H2 sections
+# ------------------------------------------------------------------
+NIX_HARDENING_PROFILE_PATH="claude/profiles/nix-modules-hardening.md"
+info "Checking ${NIX_HARDENING_PROFILE_PATH} sections..."
+[ -f "${NIX_HARDENING_PROFILE_PATH}" ] || fail "${NIX_HARDENING_PROFILE_PATH} does not exist"
+
+nix_hardening_profile_required="Hardening Matrix Preservation
+DynamicUser vs Static UID
+MemoryDenyWriteExecute Opt-outs
+Hardening Matrix Tests
+Anti-Patterns"
+
+while IFS= read -r section; do
+    [ -n "$section" ] || continue
+    if ! grep -qxF "## ${section}" "${NIX_HARDENING_PROFILE_PATH}"; then
+        fail "${NIX_HARDENING_PROFILE_PATH} missing required section: ## ${section}"
+    fi
+done <<EOF
+${nix_hardening_profile_required}
+EOF
+
+# ------------------------------------------------------------------
+# Check 9 — no SKILL.md references _universal.md (negative claim)
 # ------------------------------------------------------------------
 # Restricted to SKILL.md files specifically. Future README.md or notes
 # under a skill directory may legitimately mention _universal.md (e.g.

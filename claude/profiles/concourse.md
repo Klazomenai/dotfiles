@@ -58,7 +58,10 @@ and Concourse targets. Concourse-specific reinforcement:
 - The `-t TARGET` value in `.flyrc` can reference a named target whose
   stored credentials include a token. Never echo the full contents of
   `.flyrc` or any `fly targets --json` output that includes token
-  fields. Refer to targets by name only.
+  fields. Refer to targets by name only. If a target name is itself
+  token-shaped (long opaque string), treat it as sensitive: redact or
+  placeholder it in summaries and ask the operator to confirm the
+  intended target out-of-band before invoking any `fly` command.
 - If tool output from a `fly` command contains a field that appears
   token-shaped (long opaque string, `bearer`, `access_token`, or
   `token` key), redact it before including the output in your response.

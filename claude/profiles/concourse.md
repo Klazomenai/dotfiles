@@ -19,9 +19,10 @@ and Concourse targets. Concourse-specific reinforcement:
   is allowlisted, refuse and surface the pipeline name and applicable
   allowlist to the operator.
 - Read operations (`fly get-pipeline`, `fly jobs`, `fly builds`,
-  `fly watch`) are not allowlist-gated but must still carry an explicit
-  `-t TARGET` flag on every invocation — never rely on the default
-  target.
+  `fly watch`) may be less restricted than write operations, but if a
+  read allowlist is configured it must still be honoured. Every `fly`
+  invocation must carry an explicit `-t TARGET` flag — never rely on
+  the default target.
 - Pipeline creation via `fly set-pipeline` on a pipeline name not
   already in the allowlist is a mutation against the allowlist itself —
   treat the same as a new entry requiring operator confirmation.
@@ -45,11 +46,12 @@ and Concourse targets. Concourse-specific reinforcement:
 
 ## Fly CLI Credential Handling
 
-- Never pass a Concourse token inline in a `fly` command argument.
-  `fly login` accepts tokens via `--client-secret` and similar flags —
-  if the operator's task requires authentication, surface the correct
-  flag and ask the operator to supply the value, rather than
-  constructing a command line with the token embedded.
+- Never pass a Concourse token or client secret inline in a `fly`
+  command argument. If authentication is required, direct the operator
+  to run `fly login` interactively in their own session. Any
+  non-interactive authentication step that requires embedding a
+  credential value in argv must be performed by the operator directly —
+  never construct such a command line on their behalf.
 - The `-t TARGET` value in `.flyrc` can reference a named target whose
   stored credentials include a token. Never echo the full contents of
   `.flyrc` or any `fly targets --json` output that includes token

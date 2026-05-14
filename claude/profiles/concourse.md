@@ -33,8 +33,9 @@ and Concourse targets. Concourse-specific reinforcement:
 
 - `fly destroy-pipeline` is a high-risk mutation per `_universal.md` —
   it permanently removes the pipeline and all its build history.
-  Per-target confirmation applies; never include in automation or
-  propose it as a routine cleanup step.
+  Per-pipeline confirmation applies; surface the pipeline name to the
+  operator before invoking. Never include in automation or propose it
+  as a routine cleanup step.
 - `fly pause-pipeline` and `fly unpause-pipeline` affect all jobs in
   the pipeline simultaneously — per-pipeline confirmation applies.
 - `fly trigger-job` bypasses normal resource-trigger logic; surface

@@ -13,7 +13,8 @@
 #   4. claude/profiles/security.md exists with the required H2 sections
 #   5. claude/profiles/kubernetes.md exists with the required H2 sections
 #   6. claude/profiles/vault.md exists with the required H2 sections
-#   7. No claude/skills/<name>/SKILL.md references _universal.md
+#   7. claude/profiles/terraform.md exists with the required H2 sections
+#   8. No claude/skills/<name>/SKILL.md references _universal.md
 #      (negative claim — the asymmetric reference graph is deliberate;
 #      Claude Code must not auto-load universal content via a sibling
 #      link from a SKILL.md, since that would pollute human-CC users
@@ -214,7 +215,29 @@ ${vault_profile_required}
 EOF
 
 # ------------------------------------------------------------------
-# Check 7 — no SKILL.md references _universal.md (negative claim)
+# Check 7 — terraform.md required H2 sections
+# ------------------------------------------------------------------
+TERRAFORM_PROFILE_PATH="claude/profiles/terraform.md"
+info "Checking ${TERRAFORM_PROFILE_PATH} sections..."
+[ -f "${TERRAFORM_PROFILE_PATH}" ] || fail "${TERRAFORM_PROFILE_PATH} does not exist"
+
+terraform_profile_required="Apply Gating
+Destroy Refusal
+State Mutation Gating
+Workspace Allowlist
+Anti-Patterns"
+
+while IFS= read -r section; do
+    [ -n "$section" ] || continue
+    if ! grep -qxF "## ${section}" "${TERRAFORM_PROFILE_PATH}"; then
+        fail "${TERRAFORM_PROFILE_PATH} missing required section: ## ${section}"
+    fi
+done <<EOF
+${terraform_profile_required}
+EOF
+
+# ------------------------------------------------------------------
+# Check 8 — no SKILL.md references _universal.md (negative claim)
 # ------------------------------------------------------------------
 # Restricted to SKILL.md files specifically. Future README.md or notes
 # under a skill directory may legitimately mention _universal.md (e.g.

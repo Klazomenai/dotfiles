@@ -65,7 +65,7 @@ Per-target confirmation applies to every state command.
   agent does not perform the backup unilaterally — surface the
   requirement to the operator and wait for confirmation before
   proceeding to the mutation.
-- `terraform force-unlock <lock-id>` is a high-risk state operation.
+- `terraform force-unlock LOCK_ID` is a high-risk state operation.
   Per-target confirmation applies; never invoke unless the operator has
   explicitly confirmed no other operation is in flight.
 
@@ -77,13 +77,13 @@ workspaces. Terraform-specific reinforcement:
 - All operations must target a workspace in the configured allowlist.
   If you cannot confirm the target workspace is allowlisted, refuse and
   surface the workspace name and applicable allowlist to the operator.
-- `terraform workspace new <name>` is a mutation against the workspace
-  namespace — gated by the same allowlist and confirmation rules.
-- `terraform workspace select <name>` is a session-state mutation.
+- `terraform workspace new WORKSPACE_NAME` is a mutation against the
+  workspace namespace — gated by the same allowlist and confirmation rules.
+- `terraform workspace select WORKSPACE_NAME` is a session-state mutation.
   Before each plan or apply, run `terraform workspace show` to confirm
   the current workspace and surface it to the operator. Alternatively,
-  use `TF_WORKSPACE=<name>` to pin the workspace per command without
-  mutating session state. Never assume the workspace selected at
+  use `TF_WORKSPACE=WORKSPACE_NAME` to pin the workspace per command
+  without mutating session state. Never assume the workspace selected at
   task-start persists unchanged to the point of execution.
 
 ## Anti-Patterns

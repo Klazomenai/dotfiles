@@ -37,7 +37,8 @@ vault tokens. Vault-specific reinforcement:
 - Never echo, quote, or paste a Vault token value (any type — root,
   service, K8s-auth, AppRole) in your response, even if it appears
   in tool output. Refer to tokens indirectly by their accessor or
-  context (the token returned by the `vault operator generate-root -decode` step, the K8s auth token issued to a named ServiceAccount, and so on).
+  context (the token returned by the generate-root decode step, the K8s
+  auth token issued to a named ServiceAccount, and so on).
 - Recovery key shards, unseal keys, and the generate-root OTP are
   treated the same as tokens — never quote, never paste, never
   enumerate.

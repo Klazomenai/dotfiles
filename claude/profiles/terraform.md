@@ -60,7 +60,7 @@ Per-target confirmation applies to every state command.
   `terraform apply -replace=<resource>` as the correct path, with
   per-target confirmation.
 - `terraform untaint` is deprecated — never propose it.
-- State backup (`terraform state pull > backup-<timestamp>.tfstate`)
+- State backup (`terraform state pull > backup-$(date +%Y%m%d-%H%M%S).tfstate`)
   must precede any state mutation in the same operator session. The
   agent does not perform the backup unilaterally — surface the
   requirement to the operator and wait for confirmation before
@@ -80,12 +80,11 @@ workspaces. Terraform-specific reinforcement:
 - `terraform workspace new <name>` is a mutation against the workspace
   namespace — gated by the same allowlist and confirmation rules.
 - `terraform workspace select <name>` is a session-state mutation.
-  Carry the workspace name explicitly per operation rather than
-  relying on ambient session state; do not assume the output of
-  `terraform workspace show` at task-start reflects the intended target.
-- Never infer the target workspace from `terraform workspace show`
-  output alone. Require the operator's explicit description of the
-  intended workspace.
+  Before each plan or apply, run `terraform workspace show` to confirm
+  the current workspace and surface it to the operator. Alternatively,
+  use `TF_WORKSPACE=<name>` to pin the workspace per command without
+  mutating session state. Never assume the workspace selected at
+  task-start persists unchanged to the point of execution.
 
 ## Anti-Patterns
 

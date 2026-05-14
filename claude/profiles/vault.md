@@ -1,9 +1,9 @@
 # Agent Operating Rules — Vault Domain
 
-This file is the vault-domain agent profile addendum. The universal
-agent rules in `claude/profiles/_universal.md` and the workflow
-knowledge in `claude/skills/vault/SKILL.md` apply alongside it; the
-rules below are the vault-specific additions for autonomous agents.
+This file is the vault-domain agent profile addendum, written to
+complement the universal rules in `claude/profiles/_universal.md`
+and the workflow knowledge in `claude/skills/vault/SKILL.md`.
+The rules below are the vault-specific additions for autonomous agents.
 
 This file is intentionally not referenced from
 `claude/skills/vault/SKILL.md` — Claude Code never auto-loads it.

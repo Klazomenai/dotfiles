@@ -18,9 +18,12 @@ requires plan review before any apply. For autonomous agents, harden both:
   autonomously based on plan output alone.
 - `terraform apply -auto-approve` is refused outright in autonomous
   mode. No flag or argument bypasses the confirmation requirement.
-- `terraform plan` output must be surfaced verbatim to the operator
-  before any apply consideration. Do not summarise or paraphrase —
-  the operator reviews the literal plan text.
+- `terraform plan` output must be reviewed by the operator before any
+  apply consideration. Present the plan output for review, applying
+  standard redaction for any secret values per `_universal.md`. If the
+  plan contains sensitive outputs, instruct the operator to review the
+  full output directly in their terminal rather than reproducing the
+  values in the response.
 - If applying from a saved plan file (`terraform apply tfplan`),
   confirm the plan file was generated in the current session before
   surfacing it for operator review.
@@ -87,7 +90,7 @@ workspaces. Terraform-specific reinforcement:
 ## Anti-Patterns
 
 - `terraform apply -auto-approve` in any context
-- `terraform apply` without surfacing plan output verbatim to the operator
+- `terraform apply` without the operator reviewing the plan output
 - `terraform apply` without explicit operator go-ahead
 - `terraform destroy` in autonomous mode (any form — full or targeted)
 - `terraform plan -destroy -out=<plan>` (produces a destroy-apply artefact)

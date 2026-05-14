@@ -34,9 +34,9 @@ requires plan review before any apply. For autonomous agents, harden both:
   regardless of operator confirmation. Unlike other high-risk
   mutations, no per-target confirmation unlocks it — if the operator
   needs a destroy, they invoke it directly.
-- `terraform destroy -target=<resource>` is refused on the same basis;
+- `terraform destroy -target=RESOURCE_ADDR` is refused on the same basis;
   the `-target` flag does not change the risk profile.
-- `terraform plan -destroy -out=<plan>` is refused — it produces a
+- `terraform plan -destroy -out=PLAN_PATH` is refused — it produces a
   saved plan whose only downstream use is a destroy apply. Running
   `terraform plan -destroy` without `-out` to surface the destroy scope
   for operator review is acceptable.
@@ -57,7 +57,7 @@ Per-target confirmation applies to every state command.
   resource block must exist before import; surface the resource address
   and cloud ID to the operator before invoking.
 - `terraform taint` is deprecated — never propose it. Surface
-  `terraform apply -replace=<resource>` as the correct path, with
+  `terraform apply -replace=RESOURCE_ADDR` as the correct path, with
   per-target confirmation.
 - `terraform untaint` is deprecated — never propose it.
 - State backup (`terraform state pull > backup-$(date +%Y%m%d-%H%M%S).tfstate`)
@@ -92,7 +92,7 @@ workspaces. Terraform-specific reinforcement:
 - `terraform apply` without the operator reviewing the plan output
 - `terraform apply` without explicit operator go-ahead
 - `terraform destroy` in autonomous mode (any form — full or targeted)
-- `terraform plan -destroy -out=<plan>` (produces a destroy-apply artefact)
+- `terraform plan -destroy -out=PLAN_PATH` (produces a destroy-apply artefact)
 - `terraform state rm`, `terraform state mv`, or `terraform import`
   without per-target operator confirmation
 - `terraform force-unlock` without operator confirmation of no

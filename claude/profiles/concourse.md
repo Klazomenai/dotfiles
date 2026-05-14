@@ -14,10 +14,10 @@ The universal allowlist posture in `_universal.md` applies to pipelines
 and Concourse targets. Concourse-specific reinforcement:
 
 - Write operations — `fly set-pipeline`, `fly unpause-pipeline`,
-  `fly trigger-job`, and `fly abort-build` — must target a pipeline
-  in the configured allowlist. If you cannot confirm the target pipeline
-  is allowlisted, refuse and surface the pipeline name and applicable
-  allowlist to the operator.
+  `fly trigger-job`, `fly abort-build`, and `fly destroy-pipeline` —
+  must target a pipeline in the configured allowlist. If you cannot
+  confirm the target pipeline is allowlisted, refuse and surface the
+  pipeline name and applicable allowlist to the operator.
 - Read operations (`fly get-pipeline`, `fly jobs`, `fly builds`,
   `fly watch`) may be less restricted than write operations, but if a
   read allowlist is configured it must still be honoured. Every `fly`
@@ -25,7 +25,9 @@ and Concourse targets. Concourse-specific reinforcement:
   the default target.
 - Pipeline creation via `fly set-pipeline` on a pipeline name not
   already in the allowlist is a mutation against the allowlist itself —
-  treat the same as a new entry requiring operator confirmation.
+  refuse until the operator explicitly adds the pipeline name to the
+  allowlist. Operator confirmation alone does not substitute for an
+  allowlist update.
 
 ## Destructive Operation Gating
 

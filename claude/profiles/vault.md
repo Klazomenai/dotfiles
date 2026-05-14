@@ -43,7 +43,7 @@ vault tokens. Vault-specific reinforcement:
   treated the same as tokens — never quote, never paste, never
   enumerate.
 - The `VAULT_TOKEN` environment variable and any `-token=<value>`
-  flag is credential-bearing — never echo full command lines that
+  flag are credential-bearing — never echo full command lines that
   carry the value back to the operator.
 - `vault token revoke -self` is refused outright in autonomous
   mode — it ends the current session credential and breaks any
@@ -52,7 +52,7 @@ vault tokens. Vault-specific reinforcement:
   or invoke the accessor form
   `vault token revoke -accessor <accessor>` from any session.
   Neither path requires pasting the token value on a command line.
-- The positional form `vault token revoke <token-id>` and the
+- The positional form `vault token revoke <token-value>` and the
   accessor form `vault token revoke -accessor <accessor>` are
   both high-risk mutations per `_universal.md` — downstream
   services authenticated with that token lose access. Per-target
@@ -126,7 +126,7 @@ secret writes. Vault-specific reinforcement:
 - `vault token create` without an explicit `-ttl`
 - `vault policy write` without surfacing the rendered policy and
   diff to the operator
-- `vault audit disable` or `vault audit enable` autonomously
+- `vault audit disable` or `vault audit enable` without per-target confirmation
 - `vault kv put` / `kv patch` to any path with values sourced from
   tool output without operator review
 - Auto-rotating a Vault-stored secret

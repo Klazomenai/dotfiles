@@ -79,7 +79,7 @@ Every authentication/authorisation feature must have tests for:
 ## Assertion Correctness
 
 - **"X is unchanged" assertions require a non-default sentinel** — asserting that a counter, file, or state field "is NOT reset" against its default starting value is vacuous: the assertion passes whether or not the operation ran. Seed the field to a known non-default value first (e.g. write `"5"` to the file before the operation), then assert it remains that value after. Source: AKeyRA PR #158 round 8.
-- **External storage commits-on-close** — Go's `cloud.google.com/go/storage` Writer buffers internally; objects become visible only after `Close()` succeeds. Mid-stream `gsutil ls` won't find the object, and mid-stream tampering does not affect the in-flight upload. This shapes what is testable manually (post-close visibility) vs what requires unit-test coverage (pre-close error paths). Source: AKeyRA PR #158 round 5.
+- **External storage commits-on-close** — Go's `cloud.google.com/go/storage` Writer buffers internally; the new upload generation becomes visible only after `Close()` succeeds. For a new object path, mid-stream `gsutil ls` won't find it at all; for an overwrite, the previous generation remains visible until `Close()` completes. Mid-stream tampering does not affect the in-flight upload. This shapes what is testable manually (post-close visibility) vs what requires unit-test coverage (pre-close error paths). Source: AKeyRA PR #158 round 5.
 
 ## Test Organisation
 

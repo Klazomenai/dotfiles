@@ -70,7 +70,7 @@ When authoring Helm chart templates:
 
 - **`with` is a Go `text/template` builtin, not a Sprig function** — Sprig is a function library layered on top of Go templates. `trim` is Sprig; `with` is Go. Truthiness and block semantics for `with` are documented in the Go `text/template` package, not Sprig's docs. Source: AKeyRA PR #158 round 12.
 - **`{{- with .Values.foo }}` treats `""` as falsy but `"   "` (whitespace-only) as truthy** — pipe through Sprig's `trim` first if you want whitespace-only to fall into the same omit branch as the empty string: `{{- with .Values.foo | trim }}`. Without `trim`, downstream consumers may receive a value they treat as "set" but which is functionally empty. Source: AKeyRA PR #158 round 6.
-- **`grep <key> <chart-file>` for preflight checks is false-positive-prone** — chart comments often mention the same keys as the actual data, causing spurious matches. Use `yq eval-all 'select(.kind == "ConfigMap") | .data.<KEY>'` (mikefarah/yq, not kislyuk/yq) to extract the actual rendered value. Source: AKeyRA PR #158 round 7.
+- **`grep <key> <chart-file>` for preflight checks is false-positive-prone** — chart comments often mention the same keys as the actual data, causing spurious matches. To extract the actual rendered value, render the chart first and pipe into `yq` (mikefarah/yq, not kislyuk/yq): `helm get manifest <release> -n <ns> | yq eval-all 'select(.kind == "ConfigMap") | .data.<KEY>'`. Running `yq` directly against a Helm template file does not work — template directives are not rendered and the file may not parse as valid YAML. Source: AKeyRA PR #158 round 7.
 
 ## Repository Management
 

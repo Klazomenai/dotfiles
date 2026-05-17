@@ -74,7 +74,7 @@ description: Go development patterns for HTTP services, WASM plugins, and Redis-
 
 ## Environment Configuration
 
-- `os.LookupEnv` returns `(value, true)` for set-but-empty env vars — an `envOr`-style helper using `LookupEnv` (not `Getenv`) returns `""` when the variable is set to `""`, NOT the fallback. This is semantically correct but easy to overlook: downstream consumers that treat `""` as "no value, use default" will receive the empty string, not the fallback. When empty-string should mean "unset", check the `ok` bool explicitly: `if v, ok := os.LookupEnv("FOO"); ok { use(v) }`. Source: AKeyRA PR #158 rounds 1, 3.
+- `os.LookupEnv` returns `(value, true)` for set-but-empty env vars — an `envOr`-style helper using `LookupEnv` (not `Getenv`) returns `""` when the variable is set to `""`, NOT the fallback. This is semantically correct but easy to overlook: downstream consumers that treat `""` as "no value, use default" will receive the empty string, not the fallback. When empty-string should mean "unset", guard on both `ok` and non-empty: `if v, ok := os.LookupEnv("FOO"); ok && v != "" { use(v) }`. Source: AKeyRA PR #158 rounds 1, 3.
 
 ## Docker Multi-Stage
 

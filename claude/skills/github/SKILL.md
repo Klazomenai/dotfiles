@@ -162,4 +162,4 @@ shell or by an autonomous agent invoking subprocesses:
 - Force-pushing (`--force`, `--force-with-lease`) — breaks reviewer context, blocked by guardrail hooks
 - Emojis in branch names or code
 - Deployment sign-off that asks only for image tag — omits digest + git SHA, insufficient for provenance
-- Runbook prerequisites that mention `yq` without naming the variant (mikefarah/Go vs kislyuk/Python — incompatible syntax)
+- Runbook prerequisites that mention `yq` without naming the variant and major version (must specify mikefarah/yq **v4** — kislyuk/Python and mikefarah/yq v3 both have incompatible syntax; `eval-all` is v4-only)

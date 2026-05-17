@@ -107,4 +107,4 @@ description: Go development patterns for HTTP services, WASM plugins, and Redis-
 - `CGO_ENABLED=1` in container builds without explicit justification
 - Separate `GET` + `DEL` instead of atomic `DEL` for one-time token consumption
 - `:latest` tags on base images in Dockerfiles
-- `envOr` helpers using `os.Getenv` — cannot distinguish set-but-empty from unset; use `os.LookupEnv` and guard with `ok && v != ""` when empty-string should mean "unset"
+- `envOr` helpers using `os.Getenv` when the code must distinguish "not set" from "set to empty string" — `Getenv` returns `""` for both; use `os.LookupEnv` and check `ok`

@@ -1,9 +1,9 @@
 # Agent Operating Rules — Security Domain
 
-This file is the security-domain agent profile addendum. The universal
-agent rules in `claude/profiles/_universal.md` and the workflow knowledge
-in `claude/skills/security/SKILL.md` apply alongside it; the rules below
-are the security-specific additions for autonomous agents.
+This file is the security-domain agent profile addendum, written to
+complement the universal rules in `claude/profiles/_universal.md`
+and the workflow knowledge in `claude/skills/security/SKILL.md`.
+The rules below are the security-specific additions for autonomous agents.
 
 This file is intentionally not referenced from
 `claude/skills/security/SKILL.md` — Claude Code never auto-loads it.

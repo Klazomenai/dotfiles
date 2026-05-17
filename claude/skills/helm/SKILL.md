@@ -97,5 +97,5 @@ When authoring Helm chart templates:
 - Missing `--wait` on upgrades with post-install hooks (hooks may run before resources are ready)
 - `helm upgrade --reuse-values` across chart version bumps (misses new defaults)
 - `helm template` without `--version` (renders latest, not what's deployed)
-- `grep <key> <chart-file>` for value extraction — comments cause false positives; use `yq eval-all 'select(.kind == "...")'` instead
+- `grep <key> <chart-file>` for value extraction — comments cause false positives; render first with `helm get manifest` or `helm template`, then pipe into `yq eval-all 'select(.kind == "...")'`
 - Consulting Sprig docs for `with` block behaviour — `with` is a Go template builtin; check Go `text/template` docs instead

@@ -76,6 +76,11 @@ Every authentication/authorisation feature must have tests for:
 - Coverage is necessary but not sufficient — 100% line coverage with no assertions is worse than 80% with thorough assertions.
 - Branch coverage (`branch = true`) catches untested conditional paths that line coverage misses.
 
+## Assertion Correctness
+
+- **"X is unchanged" assertions require a non-default sentinel** — asserting that a counter, file, or state field "is NOT reset" against its default starting value is vacuous: the assertion passes whether or not the operation ran. Seed the field to a known non-default value first (e.g. write `"5"` to the file before the operation), then assert it remains that value after. Source: AKeyRA PR #158 round 8.
+- **External storage commits-on-close** — Go's `cloud.google.com/go/storage` Writer buffers internally; objects become visible only after `Close()` succeeds. Mid-stream `gsutil ls` won't find the object, and mid-stream tampering does not affect the in-flight upload. This shapes what is testable manually (post-close visibility) vs what requires unit-test coverage (pre-close error paths). Source: AKeyRA PR #158 round 5.
+
 ## Test Organisation
 
 - Go: `_test.go` files co-located with source in the same package. Test package can be `<pkg>_test` for black-box testing.
@@ -119,3 +124,4 @@ Every authentication/authorisation feature must have tests for:
 - Mocking too much — mock boundaries (Redis, HTTP), not internal functions
 - `assert True` or `assert result` without checking the actual value
 - Tests that pass when the feature is broken (false positives)
+- "X is unchanged" assertions against default-state starting values — seed a non-default sentinel first

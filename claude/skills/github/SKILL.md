@@ -88,6 +88,13 @@ When replying to PR review comments:
 - Pattern: `tmpfile=$(mktemp) && cat <<'EOF' > "$tmpfile" ... EOF` then `gh api ... -F "body=@$tmpfile" -F in_reply_to=<id> && rm -f "$tmpfile"`
 - Always reply inline to the specific comment thread, not as a standalone comment
 
+## Deployment Sign-Off Conventions
+
+When writing runbooks or asking operators to sign off on a deployment:
+
+- **Request image tag, image digest, and git SHA separately** — `image.tag` (or chart `appVersion`) is a semver string, NOT a git SHA. Release-please pipelines bump versions independently of source commits. A complete sign-off comment should ask for: (1) image tag (human-friendly identifier), (2) image digest from `gcrane digest <image>:<tag>` or equivalent (immutable content reference), (3) source git SHA from `git rev-parse HEAD` (pipeline provenance trace). Source: AKeyRA PR #158 round 5.
+- **Name the `yq` variant explicitly in runbook prerequisites** — mikefarah/yq (Go) and kislyuk/yq (Python wrapper around jq) have incompatible filter syntax. `yq eval-all 'select(.kind == "...")'` is mikefarah syntax; kislyuk's yq errors on it. Runbook prerequisites sections must call out which variant is required and provide install instructions. Source: AKeyRA PR #158 rounds 6–7.
+
 ## Public Repo Security
 
 CRITICAL — applies to ALL public-facing text in public repositories,
@@ -154,3 +161,5 @@ shell or by an autonomous agent invoking subprocesses:
 - Amending commits during PR review (`--amend`) — stack new signed commits; squash merge makes amend pointless
 - Force-pushing (`--force`, `--force-with-lease`) — breaks reviewer context, blocked by guardrail hooks
 - Emojis in branch names or code
+- Deployment sign-off that asks only for image tag — omits digest + git SHA, insufficient for provenance
+- Runbook prerequisites that mention `yq` without naming the variant (mikefarah/Go vs kislyuk/Python — incompatible syntax)

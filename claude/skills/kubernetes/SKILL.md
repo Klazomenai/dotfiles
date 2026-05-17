@@ -52,6 +52,14 @@ kubectl create <resource> --dry-run=client -o yaml | kubectl apply --context <ct
 - For large changes, review the diff first: `kubectl diff -f manifest.yaml`
 - Prefer declarative `kubectl apply -f` over imperative `kubectl create` for reproducibility
 
+## Job Management
+
+- **`kubectl create job --from=job/...` is unsupported** — `--from=` accepts only `cronjob/<name>` as the source kind. To re-run a Job, use `kubectl delete job <name> --ignore-not-found && kubectl apply -f manifest.yaml`. Other resources in the manifest receive no-op patches; only the deleted Job is recreated. Source: AKeyRA PR #158 rounds 7–9.
+- **Job spec fields are immutable** — `kubectl apply -f` against an existing-but-completed Job does not create a new pod. Always `kubectl delete job <name> --ignore-not-found` before re-applying. Source: AKeyRA PR #158 round 10.
+- **`kubectl delete pod` sends SIGTERM** and respects `terminationGracePeriodSeconds`. To simulate an unclean kill (LOCK files, crash-recovery testing), use `kubectl delete pod <name> --grace-period=0 --force` (SIGKILL). Source: AKeyRA PR #158 round 5.
+- **NetworkPolicy egress for ad hoc Jobs** — Jobs that install tooling at startup may be blocked by the namespace's NetworkPolicy if their labels match the restrictive selector. Label the ad hoc Job outside the policy's selector (e.g. `app.kubernetes.io/instance: temp-debug`) so it falls back to the namespace's default egress. Source: AKeyRA PR #158 round 4.
+- **Cluster-scoped resources survive namespace deletion** — `kubectl delete namespace` does NOT remove StorageClasses, ClusterRoles, PersistentVolumes, ValidatingWebhookConfigurations, and similar cluster-scoped resources. When cleanup must cover both namespaced and cluster-scoped resources, use `kubectl delete -f manifest.yaml` (iterates all manifest docs and deletes each at its correct scope). Source: AKeyRA PR #158 round 8.
+
 ## RBAC Scoping
 
 When reviewing or creating RBAC resources, flag these patterns:
@@ -60,6 +68,10 @@ When reviewing or creating RBAC resources, flag these patterns:
 - **`ClusterRole` with `*` verbs or `*` resources** — overly broad. Scope to specific API groups, resources, and verbs.
 - **`RoleBinding` referencing a `ClusterRole`** in a sensitive namespace — understand that this grants the ClusterRole's permissions within that namespace.
 - **ServiceAccount tokens mounted in pods that don't need API access** — set `automountServiceAccountToken: false` on pods that don't talk to the K8s API.
+
+## Data Extraction
+
+- **`kubectl -o jsonpath='{.foo}' | jq` is broken** — jsonpath outputs Go map syntax (e.g. `map[active:1 conditions:[…]]`), not JSON. `jq` cannot parse it. Use `-o json | jq '.foo'` instead. Source: AKeyRA PR #158 round 11.
 
 ## Secret Handling
 
@@ -99,3 +111,6 @@ After applying changes, verify the result:
 - `kubectl apply -f` from a URL without reviewing the manifest first
 - Missing `-n <namespace>` on commands (relies on default namespace)
 - `kubectl edit` on secrets or configmaps in production (no audit trail, no review)
+- `kubectl -o jsonpath | jq` — jsonpath outputs Go map syntax, not JSON; use `-o json | jq` instead
+- `kubectl create job --from=job/...` — only `--from=cronjob/...` is supported; re-run Jobs with delete+apply
+- `kubectl apply -f` against a completed Job without deleting first — spec immutability means no new pod is created

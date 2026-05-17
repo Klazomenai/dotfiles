@@ -64,6 +64,14 @@ Before running `helm upgrade`:
 - Use `helm show values <chart> --version <ver>` to see all available options before customising
 - Document non-obvious value choices with inline comments
 
+## Chart Template Mechanics
+
+When authoring Helm chart templates:
+
+- **`with` is a Go `text/template` builtin, not a Sprig function** — Sprig is a function library layered on top of Go templates. `trim` is Sprig; `with` is Go. Truthiness and block semantics for `with` are documented in the Go `text/template` package, not Sprig's docs. Source: AKeyRA PR #158 round 12.
+- **`{{- with .Values.foo }}` treats `""` as falsy but `"   "` (whitespace-only) as truthy** — pipe through Sprig's `trim` first if you want whitespace-only to fall into the same omit branch as the empty string: `{{- with .Values.foo | trim }}`. Without `trim`, downstream consumers may receive a value they treat as "set" but which is functionally empty. Source: AKeyRA PR #158 round 6.
+- **`grep <key> <chart-file>` for preflight checks is false-positive-prone** — chart comments often mention the same keys as the actual data, causing spurious matches. Use `yq eval-all 'select(.kind == "ConfigMap") | .data.<KEY>'` (mikefarah/yq, not kislyuk/yq) to extract the actual rendered value. Source: AKeyRA PR #158 round 7.
+
 ## Repository Management
 
 - After `helm repo add`, verify with `helm repo list`
@@ -89,3 +97,5 @@ Before running `helm upgrade`:
 - Missing `--wait` on upgrades with post-install hooks (hooks may run before resources are ready)
 - `helm upgrade --reuse-values` across chart version bumps (misses new defaults)
 - `helm template` without `--version` (renders latest, not what's deployed)
+- `grep <key> <chart-file>` for value extraction — comments cause false positives; use `yq eval-all 'select(.kind == "...")'` instead
+- Consulting Sprig docs for `with` block behaviour — `with` is a Go template builtin; check Go `text/template` docs instead

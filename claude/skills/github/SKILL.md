@@ -157,4 +157,4 @@ shell or by an autonomous agent invoking subprocesses:
 
 ## See Also
 
-- `gh-actions` skill — label-based override gates (RBAC-safe replacement for PR-body text markers), untrusted-context handling, and workflow lint guards
+- [`gh-actions` skill](../gh-actions/SKILL.md) — label-based override gates (RBAC-safe replacement for PR-body text markers), untrusted-context handling, and workflow lint guards

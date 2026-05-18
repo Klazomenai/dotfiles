@@ -175,4 +175,4 @@ Tag-based pinning (`@v4`) is acceptable for trusted first-party actions; avoid `
 
 ## See Also
 
-- `release-please` skill — action-output validation (the regex-validate pattern above is used when consuming `release-please-action`'s `version` output to reconstruct `tag_name` safely)
+- [`release-please` skill](../release-please/SKILL.md) — action-output validation (the regex-validate pattern above is used when consuming `release-please-action`'s `version` output to reconstruct `tag_name` safely)

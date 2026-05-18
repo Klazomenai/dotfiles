@@ -293,4 +293,4 @@ with: `GitHub Actions is not permitted to create or approve pull requests`.
 
 ## See Also
 
-- `gh-actions` skill — action-output validation (regex-validate `release-please-action`'s `version` output before constructing `tag_name`; never consume `tag_name` directly from action outputs)
+- [`gh-actions` skill](../gh-actions/SKILL.md) — action-output validation (regex-validate `release-please-action`'s `version` output before constructing `tag_name`; never consume `tag_name` directly from action outputs)

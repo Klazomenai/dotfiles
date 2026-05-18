@@ -154,3 +154,7 @@ shell or by an autonomous agent invoking subprocesses:
 - Amending commits during PR review (`--amend`) — stack new signed commits; squash merge makes amend pointless
 - Force-pushing (`--force`, `--force-with-lease`) — breaks reviewer context, blocked by guardrail hooks
 - Emojis in branch names or code
+
+## See Also
+
+- `gh-actions` skill — label-based override gates (RBAC-safe replacement for PR-body text markers), untrusted-context handling, and workflow lint guards

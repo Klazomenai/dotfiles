@@ -290,3 +290,7 @@ with: `GitHub Actions is not permitted to create or approve pull requests`.
 - **No config validation exists** — release-please does not warn about unknown or misspelled
   fields. The JSON schema is the only reference. When something doesn't work, check field
   names against the schema before investigating behaviour.
+
+## See Also
+
+- `gh-actions` skill — action-output validation (regex-validate `release-please-action`'s `version` output before constructing `tag_name`; never consume `tag_name` directly from action outputs)

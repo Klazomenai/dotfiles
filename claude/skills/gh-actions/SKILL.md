@@ -51,7 +51,7 @@ Never interpolate untrusted `${{ }}` directly into a `run:` block. Pass via an e
     PR_BODY: ${{ github.event.pull_request.body }}
   run: |
     # $PR_BODY is a shell variable — no text substitution into script source
-    echo "$PR_BODY" | grep -qF "[allow-coverage-drop]"
+    printf '%s\n' "$PR_BODY" | grep -qF "[allow-coverage-drop]"
 ```
 
 The `env:` key receives the `${{ }}` substitution; the shell sees a quoted variable reference, not inline text. This prevents metacharacter injection.
@@ -62,6 +62,7 @@ Action outputs (e.g. from `release-please-action`) are not sanitised at source. 
 
 ```yaml
 - name: Validate version output
+  shell: bash
   env:
     VERSION: ${{ steps.release.outputs.version }}
   run: |
@@ -76,7 +77,7 @@ Do not construct `tag_name` by consuming the action's `tag_name` output directly
 
 ### Heredoc / here-string sensitivity
 
-Avoid `<<< "${{ ... }}"` (here-string) and `<<EOF ... ${{ ... }} ... EOF` (heredoc) when the interpolated value is user-authored. The `${{ }}` substitution happens before shell parsing; the resulting here-string is re-parsed as shell input, where `#` can start comments and `"` can terminate the string.
+Avoid `<<< "${{ ... }}"` (here-string) and `<<EOF ... ${{ ... }} ... EOF` (heredoc) when the interpolated value is user-authored. The `${{ }}` substitution happens before the shell sees the `run:` script at all — the runner resolves every `${{ }}` expression textually into the script source, then passes the assembled string to the shell. Attacker-controlled content can therefore break out of quoting, introduce new commands, or use `#` to comment out the rest of a line — all before the shell runs.
 
 Use env-var indirection and read the env var inside the heredoc/here-string:
 
@@ -127,14 +128,16 @@ Omitting `synchronize` means the workflow only fires when the PR is first opened
 
 ### actionlint
 
-Pin via the `docker://` image reference to avoid version drift:
+Pin via the `docker://` image reference. For supply-chain immutability, pin by digest rather than tag — a tag can be rebuilt or retagged:
 
 ```yaml
 - name: Lint workflows
-  uses: docker://rhysd/actionlint:1.7.7
+  uses: docker://rhysd/actionlint@sha256:<digest>  # 1.7.7
   with:
     args: -color
 ```
+
+Verify the digest at install time: `docker pull rhysd/actionlint:1.7.7 && docker inspect --format='{{index .RepoDigests 0}}' rhysd/actionlint:1.7.7`. Tag-pinning (`docker://rhysd/actionlint:1.7.7`) is acceptable when digest pinning is impractical, but prefer the digest form for security-sensitive lint gates.
 
 actionlint catches: undefined expressions, unknown action inputs, shell syntax errors (it runs shellcheck internally), incorrect `on:` event types, and string/number type mismatches.
 
@@ -144,8 +147,10 @@ Pre-installed on `ubuntu-latest`. Add an explicit shell-script lint step for any
 
 ```yaml
 - name: Lint shell scripts
-  run: shellcheck .github/scripts/*.sh
+  run: find .github/scripts -name '*.sh' -print0 | xargs -r0 shellcheck
 ```
+
+The glob form (`shellcheck .github/scripts/*.sh`) fails if no `.sh` files exist — Bash keeps the literal pattern as an argument and shellcheck exits non-zero. `find | xargs -r0` skips the shellcheck invocation when there are no matches.
 
 ### Action version pinning
 
@@ -168,3 +173,7 @@ Tag-based pinning (`@v4`) is acceptable for trusted first-party actions; avoid `
 - Consuming action outputs (e.g. `release-please-action`'s `tag_name`) without regex-validating format first
 - Hardcoded line-number references in code comments within workflow `run:` blocks — drift on the same PR that introduces them
 - Missing `issues: write` permission when using `gh api` to post issue comments — `pull-requests: write` does not cover the issue-comments endpoint
+
+## See Also
+
+- `release-please` skill — action-output validation (the regex-validate pattern above is used when consuming `release-please-action`'s `version` output to reconstruct `tag_name` safely)

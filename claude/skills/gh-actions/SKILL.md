@@ -146,10 +146,13 @@ Pre-installed on `ubuntu-latest`. Add an explicit shell-script lint step for any
 
 ```yaml
 - name: Lint shell scripts
-  run: find .github/scripts -name '*.sh' -print0 | xargs -r0 shellcheck
+  run: |
+    if [ -d .github/scripts ]; then
+      find .github/scripts -name '*.sh' -print0 | xargs -r0 shellcheck
+    fi
 ```
 
-The glob form (`shellcheck .github/scripts/*.sh`) fails if no `.sh` files exist — Bash keeps the literal pattern as an argument and shellcheck exits non-zero. `find | xargs -r0` skips the shellcheck invocation when there are no matches.
+The glob form (`shellcheck .github/scripts/*.sh`) fails if no `.sh` files exist — Bash keeps the literal pattern as an argument and shellcheck exits non-zero. `find | xargs -r0` skips the shellcheck invocation when there are no matches. The `if [ -d ... ]` guard handles the case where `.github/scripts/` does not exist at all — GitHub Actions defaults to `bash -o pipefail`, so `find` exiting non-zero on a missing directory would otherwise fail the step.
 
 ### Action version pinning
 

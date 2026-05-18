@@ -52,6 +52,14 @@ kubectl create <resource> --dry-run=client -o yaml | kubectl apply --context <ct
 - For large changes, review the diff first: `kubectl diff -f manifest.yaml`
 - Prefer declarative `kubectl apply -f` over imperative `kubectl create` for reproducibility
 
+## Job Management
+
+- **`kubectl create job --from=job/...` is unsupported** — `--from=` accepts only `cronjob/<name>` as the source kind. To re-run a Job, use `kubectl delete job <name> -n <namespace> --context <ctx> --ignore-not-found && kubectl apply --context <ctx> -n <namespace> -f manifest.yaml`. Other resources in the manifest are patched against live state normally; only the Job is recreated because it was deleted first. Source: AKeyRA PR #158 rounds 7–9.
+- **Job spec fields are immutable** — `kubectl apply -f` against an existing-but-completed Job does not create a new pod. Always `kubectl delete job <name> -n <namespace> --context <ctx> --ignore-not-found` before re-applying. Source: AKeyRA PR #158 round 10.
+- **`kubectl delete pod` sends SIGTERM** and respects `terminationGracePeriodSeconds`. To simulate an unclean kill in non-production/test environments (LOCK files, crash-recovery testing), use `kubectl delete pod <name> -n <namespace> --context <ctx> --grace-period=0 --force` (removes the pod from the API immediately and requests zero graceful termination; the kubelet then delivers SIGKILL, but only if the node is reachable — on an unavailable node the old process can keep running while controllers start a replacement). Do not use `--force` on StatefulSet pods in production — it can corrupt data if the pod is mid-write. Source: AKeyRA PR #158 round 5.
+- **NetworkPolicy egress for ad hoc Jobs** — Jobs that install tooling at startup may be blocked by a namespace NetworkPolicy that selects on pod labels. The correct fix is to add a scoped egress NetworkPolicy allowing the specific traffic the ad hoc Job needs (e.g. apt mirror, package registry), matched to the Job's labels. Do not rely on relabelling the Job to escape a policy: in a default-deny namespace there is no permissive fallback to land in. Source: AKeyRA PR #158 round 4.
+- **Cluster-scoped resources survive namespace deletion** — `kubectl delete namespace` does NOT remove StorageClasses, ClusterRoles, ValidatingWebhookConfigurations, and similar cluster-scoped resources. PersistentVolumes are cluster-scoped but may be removed by the PV controller if their reclaim policy is `Delete` and the backing PVC is gone — do not assume PV data survives namespace deletion. When cleanup must cover both namespaced and cluster-scoped resources, use `kubectl delete --context <ctx> -f manifest.yaml` (iterates all manifest docs and deletes each at its correct scope). Source: AKeyRA PR #158 round 8.
+
 ## RBAC Scoping
 
 When reviewing or creating RBAC resources, flag these patterns:
@@ -60,6 +68,10 @@ When reviewing or creating RBAC resources, flag these patterns:
 - **`ClusterRole` with `*` verbs or `*` resources** — overly broad. Scope to specific API groups, resources, and verbs.
 - **`RoleBinding` referencing a `ClusterRole`** in a sensitive namespace — understand that this grants the ClusterRole's permissions within that namespace.
 - **ServiceAccount tokens mounted in pods that don't need API access** — set `automountServiceAccountToken: false` on pods that don't talk to the K8s API.
+
+## Data Extraction
+
+- **`kubectl -o jsonpath='{.foo}' | jq` is broken** — jsonpath outputs Go map syntax (e.g. `map[active:1 conditions:[…]]`), not JSON. `jq` cannot parse it. Use `-o json | jq '.foo'` instead. Source: AKeyRA PR #158 round 11.
 
 ## Secret Handling
 
@@ -99,3 +111,6 @@ After applying changes, verify the result:
 - `kubectl apply -f` from a URL without reviewing the manifest first
 - Missing `-n <namespace>` on commands (relies on default namespace)
 - `kubectl edit` on secrets or configmaps in production (no audit trail, no review)
+- `kubectl -o jsonpath | jq` — jsonpath outputs Go map syntax, not JSON; use `-o json | jq` instead
+- `kubectl create job --from=job/...` — only `--from=cronjob/...` is supported; re-run Jobs with delete+apply
+- `kubectl apply -f` against a completed Job without deleting first — spec immutability means no new pod is created

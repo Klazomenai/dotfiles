@@ -88,6 +88,13 @@ When replying to PR review comments:
 - Pattern: `tmpfile=$(mktemp) && cat <<'EOF' > "$tmpfile" ... EOF` then `gh api ... -F "body=@$tmpfile" -F in_reply_to=<id> && rm -f "$tmpfile"`
 - Always reply inline to the specific comment thread, not as a standalone comment
 
+## Deployment Sign-Off Conventions
+
+When writing runbooks or asking operators to sign off on a deployment:
+
+- **Request image tag, image digest, and git SHA separately** — `image.tag` (or chart `appVersion`) is a mutable, free-form string that does not uniquely identify a source commit. Tags are human-friendly identifiers, not content addresses — they can be overwritten and may not follow semver. A complete sign-off comment should ask for all three: (1) image tag, (2) image digest from the release pipeline's build logs or the running pod's `imageID` field (`kubectl get pod <name> -n <ns> -o jsonpath='{.status.containerStatuses[?(@.name=="<container-name>")].imageID}'`) — prefer these over resolving by tag at sign-off time, since `gcrane digest <image>:<tag>` returns the registry's current digest, which differs from the running deployment's digest if the tag was overwritten between build and sign-off; (3) source git SHA from the release pipeline's build logs or release metadata. Source: AKeyRA PR #158 round 5.
+- **Name the `yq` variant and major version explicitly in runbook prerequisites** — mikefarah/yq (Go) and kislyuk/yq (Python wrapper around jq) have incompatible filter syntax, and mikefarah/yq v3 and v4 also have incompatible CLIs (`eval-all` is v4 syntax, not present in v3). Runbook prerequisites must specify **mikefarah/yq v4** and provide install instructions. Source: AKeyRA PR #158 rounds 6–7.
+
 ## Public Repo Security
 
 CRITICAL — applies to ALL public-facing text in public repositories,
@@ -154,3 +161,5 @@ shell or by an autonomous agent invoking subprocesses:
 - Amending commits during PR review (`--amend`) — stack new signed commits; squash merge makes amend pointless
 - Force-pushing (`--force`, `--force-with-lease`) — breaks reviewer context, blocked by guardrail hooks
 - Emojis in branch names or code
+- Deployment sign-off that asks only for image tag — omits digest + git SHA, insufficient for provenance
+- Runbook prerequisites that mention `yq` without naming the variant and major version (must specify mikefarah/yq **v4** — kislyuk/Python and mikefarah/yq v3 both have incompatible syntax; `eval-all` is v4-only)

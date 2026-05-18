@@ -15,7 +15,6 @@ description: GitHub Actions workflow safety — untrusted-context handling, safe
 - `github.event.pull_request.title` — PR title, same
 - `github.event.issue.body` / `github.event.comment.body` — issue and comment text
 - `github.head_ref` — branch name from a fork author (can contain shell metacharacters)
-- `github.event.label.name` — label names set by external contributors on public repos
 - Any `github.event.*` field that reflects contributor-supplied content
 
 ### GHA-internal contexts (generally safe)
@@ -67,7 +66,7 @@ Action outputs (e.g. from `release-please-action`) are not sanitised at source. 
     VERSION: ${{ steps.release.outputs.version }}
   run: |
     if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-      echo "Unexpected version format: $VERSION" >&2
+      printf 'Unexpected version format: %q\n' "$VERSION" >&2
       exit 1
     fi
     echo "tag_name=v$VERSION" >> "$GITHUB_OUTPUT"
@@ -139,7 +138,7 @@ Pin via the `docker://` image reference. For supply-chain immutability, pin by d
 
 Verify the digest at install time: `docker pull rhysd/actionlint:1.7.7 && docker inspect --format='{{index .RepoDigests 0}}' rhysd/actionlint:1.7.7`. Tag-pinning (`docker://rhysd/actionlint:1.7.7`) is acceptable when digest pinning is impractical, but prefer the digest form for security-sensitive lint gates.
 
-actionlint catches: undefined expressions, unknown action inputs, shell syntax errors (it runs shellcheck internally), incorrect `on:` event types, and string/number type mismatches.
+actionlint catches: undefined expressions, unknown action inputs, shell syntax errors (it invokes shellcheck if available on PATH), incorrect `on:` event types, and string/number type mismatches.
 
 ### shellcheck
 

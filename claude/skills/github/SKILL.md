@@ -163,3 +163,7 @@ shell or by an autonomous agent invoking subprocesses:
 - Emojis in branch names or code
 - Deployment sign-off that asks only for image tag — omits digest + git SHA, insufficient for provenance
 - Runbook prerequisites that mention `yq` without naming the variant and major version (must specify mikefarah/yq **v4** — kislyuk/Python and mikefarah/yq v3 both have incompatible syntax; `eval-all` is v4-only)
+
+## See Also
+
+- [`gh-actions` skill](../gh-actions/SKILL.md) — label-based override gates (RBAC-safe replacement for PR-body text markers), untrusted-context handling, and workflow lint guards

@@ -30,8 +30,8 @@ Every executable recipe has three layers. Authors capture Layer 1 reliably and s
 
 | Layer | What it is | Example |
 |---|---|---|
-| 1 — Operation | The actual command | `gh api "repos/${REPO}/releases/${release_id}" -X PATCH -F body=@/tmp/body.md` |
-| 2 — Inputs | Values the operation consumes | `${REPO}`, `${release_id}`, `/tmp/body.md` |
+| 1 — Operation | The actual command | `gh api "repos/${REPO}/releases/${release_id}" -X PATCH -F body=@/tmp/new-body.md` |
+| 2 — Inputs | Values the operation consumes | `${REPO}`, `${release_id}`, `/tmp/new-body.md` |
 | 3 — Context establishment | How those inputs come to exist | The lookup, the upstream step, the user's prior setup |
 
 When reviewing a draft recipe, walk each input in Layer 2 and ask: does the reader know where this comes from? If not, Layer 3 is missing.
@@ -92,7 +92,7 @@ For one-shot independent commands with no shared state, placeholder-only style i
 
 Any recipe with shared state across multiple commands gets an explicit `### Setup` header listing required inputs before the first command block. This forces Layer 3 explicit at document-structure level, not just variable-naming level.
 
-```markdown
+````markdown
 ### Setup
 
 ```bash
@@ -100,7 +100,7 @@ REPO="<owner>/<repo>"   # e.g. Klazomenai/deck-chat
 TAG="<tag>"             # e.g. v0.1.0-alpha.7
 release_id="$(gh api "repos/${REPO}/releases/tags/${TAG}" --jq '.id')"
 ```
-```
+````
 
 All subsequent code blocks in the section can reference `${REPO}`, `${TAG}`, `${release_id}` without re-defining them — the reader knows to run Setup first.
 

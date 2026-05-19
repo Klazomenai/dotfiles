@@ -114,3 +114,7 @@ After applying changes, verify the result:
 - `kubectl -o jsonpath | jq` — jsonpath outputs Go map syntax, not JSON; use `-o json | jq` instead
 - `kubectl create job --from=job/...` — only `--from=cronjob/...` is supported; re-run Jobs with delete+apply
 - `kubectl apply -f` against a completed Job without deleting first — spec immutability means no new pod is created
+
+## See Also
+
+- [`recipe-docs` skill](../recipe-docs/SKILL.md) — operational runbooks and `kubectl` ceremony steps are canonical recipe-shaped docs; apply the three-layer model and Setup-section convention when writing them

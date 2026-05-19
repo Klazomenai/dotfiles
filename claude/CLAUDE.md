@@ -33,4 +33,4 @@ IMPORTANT: These rules are NON-NEGOTIABLE.
 
 ## Hook UX
 - The PreToolUse hooks under `claude/hooks/` pattern-match against full command strings, including argv values. Some legitimate commands with rich-text bodies may trigger false positives.
-- Workaround: write the body to a temp file (`tmpfile=$(mktemp)` + heredoc), then pass via the appropriate file flag — `--body-file <path>` for `gh pr create`, or `-F body=@$tmpfile` for `gh api` calls. Clean up the temp file after the call.
+- Workaround: write the body to a temp file (`tmpfile=$(mktemp)` + heredoc), then pass via the appropriate file flag — `--body-file <path>` for `gh pr create`, `-F body=@$tmpfile` for `gh api` calls, or `-F <path>` for `git commit`. Clean up the temp file after the call.

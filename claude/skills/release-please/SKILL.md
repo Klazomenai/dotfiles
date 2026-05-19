@@ -336,7 +336,7 @@ with: `GitHub Actions is not permitted to create or approve pull requests`.
 
 - **Assuming a `0.0.0`/`0.0.1` manifest produces the expected version on first release without explicit override** — without `bump-minor-pre-major: true`, a breaking-change commit (`feat!:`) from `0.0.1` produces `1.0.0`; without the full four-field prerelease config, `feat:` produces `0.1.0` with no suffix. Any mismatch between config flags and commit history can land an unintended major bump. Use `Release-As:` footer, `release-as` config, or manifest seed to pin the first version explicitly.
 
-- **Bootstrapping CHANGELOG.md with prose below `# Changelog`** — release-please's `adjustHeaders` (`src/updaters/changelog.ts:63-65`) demotes every `^# ` line to `## ` on the first release run when no conforming `## <version>` heading exists. Bootstrap with `# Changelog\n` only (no preamble), or place preamble above the H1 where it won't be mangled.
+- **Bootstrapping CHANGELOG.md with prose below `# Changelog`** — release-please's `adjustHeaders` (`src/updaters/changelog.ts:63-65`) demotes every `^# ` line to `## ` on the first release run when no conforming `## <version>` heading exists. Bootstrap with `# Changelog\n` only (no preamble), or place preamble between `# Changelog` and the first `## <version>` anchor (matches release-please's canonical fixture — see § CHANGELOG.md bootstrap structure).
 
 - **Expecting `Refs #N` to populate `closes [#N]` in the changelog** — release-please only recognises `Closes`, `Fixes`, and `Resolves`. `Refs #N` is silently ignored. Backfill `closes [#N]` manually on the action's branch before the release PR is merged.
 

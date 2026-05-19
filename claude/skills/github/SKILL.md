@@ -18,7 +18,7 @@ loads that directory.
 - Conventional commits format: `<type>(scope): description`
 - Types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `ci`, `perf`, `security`
 - Signed commits required: always use `--gpg-sign`
-- Use `Refs #N` in commit body — NEVER `Closes #N`, `Fixes #N`, or `Resolves #N` (closing is a merge-time decision)
+- Use `Refs #N` in commit body — NEVER `Closes #N`, `Fixes #N`, or `Resolves #N` (closing is a merge-time decision). Note: release-please's changelog parser only recognises `Closes`/`Fixes`/`Resolves` for `closes [#N]` backlinks — using `Refs #N` means changelog entries land without issue links; see [`release-please` skill](../release-please/SKILL.md) for the manual backfill workflow.
 - NEVER amend commits or force-push — stack separate signed commits, squash on merge
 - Commit emoji prefixes (in commit message, not branch): ✨ feat | 🐛 fix | 📝 docs | ♻️ refactor | 🧪 test | ⚙️ chore | 🔐 security | 🏗️ ci | ⚡ perf
 
@@ -153,7 +153,7 @@ shell or by an autonomous agent invoking subprocesses:
 
 - Pushing directly to main or default branch
 - Creating "master" branches
-- Using `Closes #N`, `Fixes #N`, or `Resolves #N` in commit messages (use `Refs #N`)
+- Using `Closes #N`, `Fixes #N`, or `Resolves #N` in commit messages (use `Refs #N`). Note: `Refs #N` is invisible to release-please's changelog parser — see [`release-please` skill](../release-please/SKILL.md) for the manual backfill workflow when `closes [#N]` references are needed in the changelog.
 - Using `gh pr merge` or `gh pr ready` (merging is a human decision)
 - Creating non-draft PRs
 - Committing secrets or credentials

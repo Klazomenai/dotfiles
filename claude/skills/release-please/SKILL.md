@@ -118,7 +118,7 @@ Change `prerelease-type` from `alpha` to `beta`:
 
 ## Manifest Bootstrap
 
-The `.release-please-manifest.json` tracks the current released version. For a new repo:
+The `.release-please-manifest.json` tracks the current released version. For a new repo with full prerelease config (`versioning: "prerelease"` + `prerelease: true` + `prerelease-type: "alpha"` + `bump-minor-pre-major: true`):
 
 ```json
 {
@@ -126,11 +126,44 @@ The `.release-please-manifest.json` tracks the current released version. For a n
 }
 ```
 
-With `bump-minor-pre-major: true` and `versioning: "prerelease"`, the first `feat:` commit
-produces `0.1.0-alpha` (minor bump from `0.0.1` + prerelease suffix).
+The first `feat:` commit produces `0.1.0-alpha` (minor bump from `0.0.1` + prerelease suffix). **All four config fields must be present** — missing `versioning: "prerelease"` means no prerelease suffix on first release (you get `0.1.0`, not `0.1.0-alpha`).
 
 **Do NOT set `bump-patch-for-minor-pre-major: true`** — this overrides `bump-minor-pre-major`
 for features, making `feat:` produce patch bumps (`0.0.2-alpha` instead of `0.1.0-alpha`).
+
+## First Release Bootstrap
+
+### Default first-release behaviour
+
+release-please calculates the first version by bumping from the manifest value. With no version override, the output depends entirely on your config flags:
+
+| Config | First `feat:` from `0.0.1` | First `feat!:` from `0.0.1` |
+|---|---|---|
+| No flags | `0.1.0` | `1.0.0` |
+| `bump-minor-pre-major: true` only | `0.1.0` | `0.2.0` |
+| Full prerelease config (all four fields) | `0.1.0-alpha` | `0.2.0-alpha` |
+
+**If you land a breaking-change commit before the config is complete, you may get `1.0.0` before you intended it.**
+
+### Override paths
+
+When the default bump would produce the wrong version, three escape hatches exist:
+
+1. **`Release-As:` commit footer** (one-shot) — add `Release-As: 0.1.0-alpha.0` to any commit message; release-please uses this as the exact version for the next release PR, then returns to normal bump logic.
+
+2. **`release-as` config field** (persistent) — set `"release-as": "0.1.0-alpha.0"` in `.release-please-config.json`; release-please pins every subsequent release PR to this version until the field is removed.
+
+3. **Manifest seed** — write the target starting version directly into `.release-please-manifest.json` before the first push to main; release-please bumps from this value on the first run.
+
+### CHANGELOG.md bootstrap structure (F3)
+
+release-please's `adjustHeaders` (`src/updaters/changelog.ts:63-65`) regex-replaces every `^# ` line with `## ` when no conforming `## <version>` heading exists yet. Any prose preamble below the `# Changelog` H1 in a bootstrap CHANGELOG.md will be **demoted to H2 on the first release run**, producing duplicate headings and corrupted structure.
+
+Bootstrap with one of:
+- **Empty H1 only**: `# Changelog\n` (safe for all cases)
+- **H1 + preamble above the first version anchor**: content placed between `# Changelog` and where the first `## <version>` will land — matches release-please's canonical fixture (`__snapshots__/changelog.js:1-54`)
+
+This `adjustHeaders` fires only once; from release #2 onward, the existing `## <version>` heading anchors the conforming-content path (`src/updaters/changelog.ts:49-53`), which preserves surrounding content verbatim.
 
 ## PR Customisation
 
@@ -244,6 +277,49 @@ permissions:
   packages: write        # Push to container registry (Docker only)
 ```
 
+## Release PR Lifecycle
+
+### Action branch ownership
+
+release-please-action maintains a branch named `release-please--branches--<base>--components--<component>` and **force-pushes to it on every run**. Hand commits on top of this branch are possible (e.g. CHANGELOG backfill, structural fixes) but you are racing the action: any push to main between your edit and the release-PR merge triggers a regen that overwrites your commits.
+
+### PR body regeneration
+
+The release PR body is **regenerated from scratch on every push to main**. Manual `gh pr edit --body` edits are ephemeral. Only three config fields survive regen:
+- `pull-request-header`
+- `pull-request-footer`
+- `pull-request-title-pattern`
+
+All other body content (backfilled `closes [#N]` references, operator notes) must be committed to the action's branch before the release PR is merged — and even then you are racing the next push to main.
+
+## Convention Collisions
+
+### `Refs #N` is invisible to release-please's parser (F4)
+
+release-please's commit-message parser only recognises `Closes`, `Fixes`, and `Resolves` as issue-link keywords. It does **not** recognise `Refs #N`. When commits use `Refs #N` (as required by the klazomenai `no-closes-in-commits` hook), changelog entries land without `closes [#N]` references.
+
+Workflow when you need `closes [#N]` in the changelog:
+1. Let release-please generate the release PR as normal
+2. Backfill `closes [#N]` manually via a commit directly onto the action's branch
+3. Merge the release PR before the next push to main triggers a regen that overwrites your backfill
+
+### Hook collision with release-process commits (F6)
+
+`claude/hooks/no-closes-in-commits.sh` (lines 7-8) denies any `git commit` whose **argv** contains `(Closes|Fixes|Resolves) #[0-9]+`. This fires on legitimate release-process commits whose body mentions these keywords — for example, a `Release-As:` override commit that explains why the override exists, or a CHANGELOG backfill commit listing `closes` mappings.
+
+The escape: `git commit -F <tempfile>` — the hook matches argv only, not file contents. Write the commit message to a temp file and pass it via `-F`:
+
+```bash
+tmpfile=$(mktemp)
+# write message to $tmpfile
+git commit --gpg-sign -F "$tmpfile"
+rm -f "$tmpfile"
+```
+
+This is the same escape used for `gh pr create --body-file` and `gh api -F body=@file` (documented in `claude/CLAUDE.md` Hook UX).
+
+> See also: `klazomenai/dotfiles#111` tracks a dedicated hook-exception mechanism for release-please-managed flows, where a structural escape is preferable to a per-call workaround.
+
 ## GitHub Actions Setup
 
 Before the first run, enable in repo settings:
@@ -254,7 +330,17 @@ Before the first run, enable in repo settings:
 Without this, release-please creates the branch and commit but fails to open the PR
 with: `GitHub Actions is not permitted to create or approve pull requests`.
 
+**Verify after the first push**: check the Actions tab for this exact error string. A workflow run that completes green but produces no release PR is the silent failure mode — the branch update succeeds but the PR-creation step fails quietly. This setting is OFF by default on new repos and has been observed failing silently for 18+ consecutive runs before being noticed.
+
 ## Anti-Patterns
+
+- **Assuming a `0.0.0`/`0.0.1` manifest produces the expected version on first release without explicit override** — without `bump-minor-pre-major: true`, a breaking-change commit (`feat!:`) from `0.0.1` produces `1.0.0`; without the full four-field prerelease config, `feat:` produces `0.1.0` with no suffix. Any mismatch between config flags and commit history can land an unintended major bump. Use `Release-As:` footer, `release-as` config, or manifest seed to pin the first version explicitly.
+
+- **Bootstrapping CHANGELOG.md with prose below `# Changelog`** — release-please's `adjustHeaders` (`src/updaters/changelog.ts:63-65`) demotes every `^# ` line to `## ` on the first release run when no conforming `## <version>` heading exists. Bootstrap with `# Changelog\n` only (no preamble), or place preamble between `# Changelog` and the first `## <version>` anchor (matches release-please's canonical fixture — see § CHANGELOG.md bootstrap structure).
+
+- **Expecting `Refs #N` to populate `closes [#N]` in the changelog** — release-please only recognises `Closes`, `Fixes`, and `Resolves`. `Refs #N` is silently ignored. Backfill `closes [#N]` manually on the action's branch before the release PR is merged.
+
+- **Hand-editing a release PR body via `gh pr edit --body`** — the body is regenerated from scratch on every push to main. Only `pull-request-header`, `pull-request-footer`, and `pull-request-title-pattern` survive regen. Commit backfill content to the action's branch instead.
 
 - **`"versioning-strategy"` instead of `"versioning"`** — silently ignored. release-please
   falls back to the default versioning strategy (simple patch bumps, no prerelease suffix).

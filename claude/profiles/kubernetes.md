@@ -1,9 +1,9 @@
 # Agent Operating Rules — Kubernetes Domain
 
-This file is the kubernetes-domain agent profile addendum. The universal
-agent rules in `claude/profiles/_universal.md` and the workflow knowledge
-in `claude/skills/kubernetes/SKILL.md` apply alongside it; the rules
-below are the kubernetes-specific additions for autonomous agents.
+This file is the kubernetes-domain agent profile addendum, written to
+complement the universal rules in `claude/profiles/_universal.md`
+and the workflow knowledge in `claude/skills/kubernetes/SKILL.md`.
+The rules below are the kubernetes-specific additions for autonomous agents.
 
 This file is intentionally not referenced from
 `claude/skills/kubernetes/SKILL.md` — Claude Code never auto-loads it.

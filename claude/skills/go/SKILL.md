@@ -72,6 +72,10 @@ description: Go development patterns for HTTP services, WASM plugins, and Redis-
 - Update strategy: patch versions freely, minor with changelog review, major with testing.
 - `govulncheck ./...` in CI to catch known vulnerabilities in dependencies.
 
+## Environment Configuration
+
+- `os.LookupEnv` returns `(value, true)` for set-but-empty env vars — an `envOr`-style helper using `LookupEnv` (not `Getenv`) returns `""` when the variable is set to `""`, NOT the fallback. This is semantically correct but easy to overlook: downstream consumers that treat `""` as "no value, use default" will receive the empty string, not the fallback. When empty-string should mean "unset", guard on both `ok` and non-empty: `if v, ok := os.LookupEnv("FOO"); ok && v != "" { use(v) }`. Source: AKeyRA PR #158 rounds 1, 3.
+
 ## Docker Multi-Stage
 
 - Builder stage: `golang:1.24-alpine` with `CGO_ENABLED=0` for static binaries.
@@ -103,3 +107,4 @@ description: Go development patterns for HTTP services, WASM plugins, and Redis-
 - `CGO_ENABLED=1` in container builds without explicit justification
 - Separate `GET` + `DEL` instead of atomic `DEL` for one-time token consumption
 - `:latest` tags on base images in Dockerfiles
+- `envOr` helpers using `os.Getenv` when the code must distinguish "not set" from "set to empty string" — `Getenv` returns `""` for both; use `os.LookupEnv` and check `ok`

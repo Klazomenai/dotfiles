@@ -305,7 +305,7 @@ Workflow when you need `closes [#N]` in the changelog:
 
 ### Hook collision with release-process commits (F6)
 
-`claude/hooks/no-closes-in-commits.sh` denies any `git commit` whose **argv** contains `(Closes|Fixes|Resolves) #[0-9]+`. This fires on legitimate release-process commits whose body mentions these keywords — for example, a `Release-As:` override commit that explains why the override exists, or a CHANGELOG backfill commit listing `closes` mappings.
+`claude/hooks/no-closes-in-commits.sh` (lines 7-8) denies any `git commit` whose **argv** contains `(Closes|Fixes|Resolves) #[0-9]+`. This fires on legitimate release-process commits whose body mentions these keywords — for example, a `Release-As:` override commit that explains why the override exists, or a CHANGELOG backfill commit listing `closes` mappings.
 
 The escape: `git commit -F <tempfile>` — the hook matches argv only, not file contents. Write the commit message to a temp file and pass it via `-F`:
 
@@ -334,7 +334,7 @@ with: `GitHub Actions is not permitted to create or approve pull requests`.
 
 ## Anti-Patterns
 
-- **Assuming manifest at `0.0.1` + `bump-minor-pre-major: true` always produces `0.1.0-alpha` on first release** — it does only when all four prerelease config fields are present (`versioning: "prerelease"`, `prerelease: true`, `prerelease-type`, and `bump-minor-pre-major`). Missing `versioning: "prerelease"` gives `0.1.0` without suffix; a breaking-change commit with no flags gives `1.0.0`. Use `Release-As:` footer, `release-as` config, or manifest seed to pin the first version explicitly.
+- **Assuming a `0.0.0`/`0.0.1` manifest produces the expected version on first release without explicit override** — without `bump-minor-pre-major: true`, a breaking-change commit (`feat!:`) from `0.0.1` produces `1.0.0`; without the full four-field prerelease config, `feat:` produces `0.1.0` with no suffix. Any mismatch between config flags and commit history can land an unintended major bump. Use `Release-As:` footer, `release-as` config, or manifest seed to pin the first version explicitly.
 
 - **Bootstrapping CHANGELOG.md with prose below `# Changelog`** — release-please's `adjustHeaders` (`src/updaters/changelog.ts:63-65`) demotes every `^# ` line to `## ` on the first release run when no conforming `## <version>` heading exists. Bootstrap with `# Changelog\n` only (no preamble), or place preamble above the H1 where it won't be mangled.
 

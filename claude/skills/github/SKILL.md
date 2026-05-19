@@ -153,7 +153,7 @@ shell or by an autonomous agent invoking subprocesses:
 
 - Pushing directly to main or default branch
 - Creating "master" branches
-- Using `Closes #N`, `Fixes #N`, or `Resolves #N` in commit messages (use `Refs #N`)
+- Using `Closes #N`, `Fixes #N`, or `Resolves #N` in commit messages (use `Refs #N`). Note: `Refs #N` is invisible to release-please's changelog parser — see [`release-please` skill](../release-please/SKILL.md) for the manual backfill workflow when `closes [#N]` references are needed in the changelog.
 - Using `gh pr merge` or `gh pr ready` (merging is a human decision)
 - Creating non-draft PRs
 - Committing secrets or credentials

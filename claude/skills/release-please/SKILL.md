@@ -318,6 +318,8 @@ rm -f "$tmpfile"
 
 This is the same escape used for `gh pr create --body-file` and `gh api -F body=@file` (documented in `claude/CLAUDE.md` Hook UX).
 
+> See also: `klazomenai/dotfiles#111` tracks a dedicated hook-exception mechanism for release-please-managed flows, where a structural escape is preferable to a per-call workaround.
+
 ## GitHub Actions Setup
 
 Before the first run, enable in repo settings:

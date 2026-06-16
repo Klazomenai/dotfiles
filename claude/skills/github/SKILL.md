@@ -88,6 +88,68 @@ When replying to PR review comments:
 - Pattern: `tmpfile=$(mktemp) && cat <<'EOF' > "$tmpfile" ... EOF` then `gh api ... -F "body=@$tmpfile" -F in_reply_to=<id> && rm -f "$tmpfile"`
 - Always reply inline to the specific comment thread, not as a standalone comment
 
+## Issue Acceptance-Criteria Verification at Close
+
+When a PR merges and references an issue via `Refs #N`, the close decision is operator-driven — never automatic. Walk every AC checkbox against evidence from the merged state; the issue closes only when 100% of AC are demonstrably met.
+
+1. **List** — read the issue's AC section in full; enumerate every sub-criterion as a discrete row
+2. **Classify** — for each AC, decide which evidence type applies (see below)
+3. **Verify** — gather the evidence from the merged state (commit SHA on `main`, CI run, file contents)
+4. **Decide** — if all AC verified, close with the verification table; if partial, post a progress comment and leave open
+5. **Comment** — post the verification (or progress) table citing the merge commit SHA
+
+### Evidence types
+
+- **Code-state-verifiable** — file presence (`ls`), grep for expected patterns or function names, config-field presence (`yq`, `jq`), commit-content check (`git show <sha>`). Evidence column: file path + line range + commit SHA.
+- **CI-state** — workflow run conclusion (`gh pr checks <N>`, `gh run view <id>`), named job result. Evidence column: workflow name + run URL + conclusion.
+- **Operational-test** — forward-looking AC that requires runtime confirmation (first release run, adversarial-input PR, scratch staging deploy). Two valid resolutions: (1) leave deferred when the implementation makes the failure mode impossible by construction, citing the implementation invariant; (2) execute the test and cite output. Evidence column: either the deferral reason + invariant, or the test invocation + output excerpt.
+
+### Verification table format
+
+Post the table as the close-comment body. One row per AC sub-criterion:
+
+| AC | Evidence | Commit / Run |
+|----|----------|--------------|
+| New section in `claude/skills/<name>/SKILL.md` | `grep -n "## <section>" claude/skills/<name>/SKILL.md` → line N | `<sha>` |
+| Anti-Patterns gains two entries | Anti-pattern bullet count: N → N+2 | `<sha>` |
+| Worked example present | Section "### Worked example" present at line N | `<sha>` |
+
+Each row stands on its own — the table is auditable later without re-running the same checks.
+
+### The 100%-or-don't-close rule
+
+Partial completion → progress comment, issue stays open. Never close with un-walked AC. The rationale: a closed-with-gaps issue gets buried in the closed-issue list and the gaps are forgotten; an open-with-progress issue stays visible in the open-issue list until completed. Open is the load-bearing signal.
+
+Progress comments take the same table form but tag each row `done` / `partial` / `deferred` / `pending`. The `pending` rows are what the issue stays open for.
+
+### Auto-close keyword discipline
+
+Even when the close decision is authorised, the auto-close keywords (`Closes #N`, `Fixes #N`, `Resolves #N`) must not appear in commit messages or PR bodies — closure is taken explicitly via `gh issue close <N> --body-file <verification>` after the verification table is satisfied. Use `Refs #N` in commit text always.
+
+The reason: `Closes #N` in a merged PR auto-closes the issue at merge time, before the AC walk happens. That defeats the walk-and-decide discipline entirely.
+
+### Worked example
+
+After merging a skill-extension PR that landed three of four ACs:
+
+```
+## Progress (post-merge)
+
+| AC | Status | Evidence | Commit |
+|----|--------|----------|--------|
+| New section in SKILL.md | done | `grep -n "## New Section" .../SKILL.md` → line 94 | `abc1234` |
+| Two anti-pattern entries | done | Anti-pattern bullet count: 12 → 14 | `abc1234` |
+| Worked example present | done | Section "### Worked example" at line 138 | `abc1234` |
+| `make install-claude` verification | pending | Not yet executed in operator environment | — |
+
+Issue stays open pending operator `make install-claude` + symlink verification.
+```
+
+### See also
+
+- [Copilot Review Workflow](#copilot-review-workflow) — same walk-and-decide pattern applied at PR-review time
+- Future: `diagnostics` skill (tracked in dotfiles#114) for verify-before-iterate meta-discipline
+
 ## Deployment Sign-Off Conventions
 
 When writing runbooks or asking operators to sign off on a deployment:
@@ -163,6 +225,8 @@ shell or by an autonomous agent invoking subprocesses:
 - Emojis in branch names or code
 - Deployment sign-off that asks only for image tag — omits digest + git SHA, insufficient for provenance
 - Runbook prerequisites that mention `yq` without naming the variant and major version (must specify mikefarah/yq **v4** — kislyuk/Python and mikefarah/yq v3 both have incompatible syntax; `eval-all` is v4-only)
+- Closing an issue without walking each AC against evidence — closure must follow the verification-table workflow, not the merge event
+- Using `Closes #N`, `Fixes #N`, or `Resolves #N` in commit messages or PR bodies even when authorised to close — closure must be explicit via `gh issue close` after the AC walk, never implicit via merge-time auto-close
 
 ## See Also
 
